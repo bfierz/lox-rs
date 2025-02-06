@@ -41,7 +41,43 @@ impl Scanner {
             '+' => self.add_token(TokenType::Plus),
             ';' => self.add_token(TokenType::Semicolon),
             '*' => self.add_token(TokenType::Star),
+            '!' => if self.match_next('=') { self.add_token(TokenType::BangEqual) } else { self.add_token(TokenType::Bang) },
+            '=' => if self.match_next('=') { self.add_token(TokenType::EqualEqual) } else { self.add_token(TokenType::Equal) },
+            '<' => if self.match_next('=') { self.add_token(TokenType::LessEqual) } else { self.add_token(TokenType::Less) },
+            '>' => if self.match_next('=') { self.add_token(TokenType::GreaterEqual) } else { self.add_token(TokenType::Greater) },
+            '/' => if self.match_next('/') {
+                        // A comment goes until the end of the line.
+                        while self.peek() != '\n' && !self.is_at_end() {
+                            self.advance();
+                        }
+                    } else {
+                        self.add_token(TokenType::Slash);
+                    },
+            ' ' | '\r' | '\t' => (), // Ignore whitespace.
+            '\n' => self.line += 1,
             _ => self.error(self.line, "Unexpected character."),
+        }
+    }
+
+    fn match_next(&mut self, expected: char) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+
+        let c = self.source.chars().nth(self.current as usize).unwrap();
+        if c != expected {
+            return false;
+        }
+
+        self.current += 1;
+        true
+    }
+
+    fn peek(&self) -> char {
+        if self.is_at_end() {
+            '\0'
+        } else {
+            self.source.chars().nth(self.current as usize).unwrap()
         }
     }
 
