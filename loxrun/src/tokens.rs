@@ -4,12 +4,20 @@ use std::fmt;
 pub struct Token {
     pub token_type: TokenType,
     pub lexeme: String,
-    pub literal: i32,
+    pub literal: LiteralTypes,
     pub line: i32,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum LiteralTypes {
+    String(String),
+    Number(f64),
+    Bool(bool),
+    Nil,
+}
+
 impl Token {
-    pub fn new(token_type: TokenType, lexeme: String, literal: i32, line: i32) -> Self {
+    pub fn new(token_type: TokenType, lexeme: String, literal: LiteralTypes, line: i32) -> Self {
         Token {
             token_type,
             lexeme,
@@ -21,7 +29,7 @@ impl Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} {} {}", self.token_type, self.lexeme, self.literal)
+        write!(f, "{:?} {} {:?}", self.token_type, self.lexeme, self.literal)
     }
 }
 
