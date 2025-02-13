@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub token_type: TokenType,
     pub lexeme: String,
@@ -18,10 +18,38 @@ pub enum LiteralTypes {
 
 impl Token {
     pub fn new(token_type: TokenType, lexeme: String, literal: LiteralTypes, line: i32) -> Self {
-        Token {
+        Self {
             token_type,
             lexeme,
             literal,
+            line,
+        }
+    }
+
+    pub fn new_identifier(lexeme: String, line: i32) -> Self {
+        Self {
+            token_type: TokenType::Identifier,
+            lexeme: lexeme.clone(),
+            literal: LiteralTypes::String(lexeme),
+            line,
+        }
+    }
+
+    pub fn new_string(lexeme: String, line: i32) -> Self {
+        Self {
+            token_type: TokenType::String,
+            lexeme: lexeme.clone(),
+            literal: LiteralTypes::String(lexeme[1..lexeme.len() - 1].to_string()),
+            line,
+        }
+    }
+
+    pub fn new_number(lexeme: String, line: i32) -> Self {
+        let num = lexeme.parse().unwrap();
+        Self {
+            token_type: TokenType::Number,
+            lexeme,
+            literal: LiteralTypes::Number(num),
             line,
         }
     }
