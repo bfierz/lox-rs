@@ -5,6 +5,8 @@ use std::io::{self, Write};
 
 mod scanner;
 mod tokens;
+mod expression;
+mod printer;
 
 use scanner::Scanner;
 
