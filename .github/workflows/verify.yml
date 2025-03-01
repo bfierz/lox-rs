@@ -17,6 +17,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: cd loxrun & cargo build --verbose
+      run: |
+        pushd loxrun
+        cargo build --verbose
+        popd
     - name: Run tests
-      run: cd loxrun & cargo test --verbose
+      run: |
+        pushd loxrun
+        cargo test --verbose
+        popd
