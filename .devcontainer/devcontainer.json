@@ -11,7 +11,10 @@
 				"vadimcn.vscode-lldb",
 				"GitHub.copilot",
 				"fill-labs.dependi"
-			]
+			],
+			"settings": {
+				"extensions.verifySignature": false
+			}
 		}
 	}
 
