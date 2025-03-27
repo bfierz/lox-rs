@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{self, Write};
 
 mod expression;
+mod interpreter;
 mod parser;
 mod printer;
 mod scanner;
@@ -79,8 +80,21 @@ fn run(source: String) -> bool {
     }
 
     let expr = parse_result.unwrap();
-    let pretty = printer::pretty_print(&expr);
-    println!("{}", pretty);
+
+    let interpreter = interpreter::Interpreter::new(&expr);
+    let result = interpreter.evaluate();
+    if let Err(err) = result {
+        eprintln!("{}", err.message);
+        return true;
+    }
+    println!("{}", result.unwrap());
+    // Print the expression tree
+    // This is just for debugging purposes
+    // In a real interpreter, you might not want to print the entire tree
+    // but rather just the result of the evaluation
+    // You can comment this out if you don't want to see the tree
+    // let pretty = printer::pretty_print(&expr);
+    // println!("{}", pretty);
 
     false
 }

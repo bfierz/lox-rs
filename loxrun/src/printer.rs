@@ -1,5 +1,5 @@
 use crate::expression::*;
-use crate::tokens::{LiteralTypes, Token, TokenType};
+use crate::tokens::LiteralTypes;
 
 pub fn pretty_print(expr: &Expression) -> String {
     match expr {
@@ -55,6 +55,7 @@ pub fn rpn_print(expr: &Expression) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tokens::{Token, TokenType};
 
     #[test]
     fn test_pretty_print() {
