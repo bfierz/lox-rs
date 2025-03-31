@@ -211,3 +211,70 @@ impl Parser {
         self.tokens[self.current].token_type == TokenType::Eof
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scanner::Scanner;
+
+    #[test]
+    fn test_parser() {
+        let expression = "1 + 2 * 3 - 4 / 5";
+
+        let four_div_five = Box::new(Expression::Binary(Binary {
+            left: Box::new(Expression::Literal(Literal {
+                value: LiteralTypes::Number(4.0),
+            })),
+            operator: Token {
+                token_type: TokenType::Slash,
+                lexeme: "/".to_string(),
+                literal: LiteralTypes::Nil,
+                line: 1,
+            },
+            right: Box::new(Expression::Literal(Literal {
+                value: LiteralTypes::Number(5.0),
+            })),
+        }));
+        let two_mul_three = Box::new(Expression::Binary(Binary {
+            left: Box::new(Expression::Literal(Literal {
+                value: LiteralTypes::Number(2.0),
+            })),
+            operator: Token {
+                token_type: TokenType::Star,
+                lexeme: "*".to_string(),
+                literal: LiteralTypes::Nil,
+                line: 1,
+            },
+            right: Box::new(Expression::Literal(Literal {
+                value: LiteralTypes::Number(3.0),
+            })),
+        }));
+        let reference = Expression::Binary(Binary {
+            left: Box::new(Expression::Binary(Binary {
+                left: Box::new(Expression::Literal(Literal {
+                    value: LiteralTypes::Number(1.0),
+                })),
+                operator: Token {
+                    token_type: TokenType::Plus,
+                    lexeme: "+".to_string(),
+                    literal: LiteralTypes::Nil,
+                    line: 1,
+                },
+                right: two_mul_three,
+            })),
+            operator: Token {
+                token_type: TokenType::Minus,
+                lexeme: "-".to_string(),
+                literal: LiteralTypes::Nil,
+                line: 1,
+            },
+            right: four_div_five,
+        });
+
+        let mut scanner = Scanner::new(expression.to_string());
+        let tokens = scanner.scan_tokens();
+        let mut parser = Parser::new(tokens.clone());
+        let expression = parser.parse().unwrap();
+        assert_eq!(expression, reference);
+    }
+}
