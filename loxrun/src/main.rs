@@ -3,11 +3,13 @@ use std::process;
 use std::fs;
 use std::io::{self, Write};
 
+mod expression;
+mod parser;
+mod printer;
 mod scanner;
 mod tokens;
-mod expression;
-mod printer;
 
+use parser::Parser;
 use scanner::Scanner;
 
 fn main() {
@@ -63,11 +65,22 @@ fn run_prompt() {
 
 fn run(source: String) -> bool {
     let mut scanner = Scanner::new(source);
-    let tokens = scanner.scan_tokens();
-
-    for token in tokens {
-        println!("{}", token);
+    let tokens = scanner.scan_tokens().clone();
+    if scanner.had_error {
+        return true;
     }
 
-    scanner.had_error
+    let mut parser = Parser::new(tokens);
+    let parse_result = parser.parse();
+
+    if let Err(err) = parse_result {
+        eprintln!("{}", err.message);
+        return true;
+    }
+
+    let expr = parse_result.unwrap();
+    let pretty = printer::pretty_print(&expr);
+    println!("{}", pretty);
+
+    false
 }
