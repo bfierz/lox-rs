@@ -80,15 +80,14 @@ fn run(source: String) -> bool {
         return true;
     }
 
-    let expr = parse_result.unwrap();
+    let statements = parse_result.unwrap();
 
-    let interpreter = interpreter::Interpreter::new(&expr);
-    let result = interpreter.evaluate();
+    let interpreter = interpreter::Interpreter::new(&statements);
+    let result = interpreter.execute();
     if let Err(err) = result {
         eprintln!("{}", err.message);
         return true;
     }
-    println!("{}", result.unwrap());
     // Print the expression tree
     // This is just for debugging purposes
     // In a real interpreter, you might not want to print the entire tree

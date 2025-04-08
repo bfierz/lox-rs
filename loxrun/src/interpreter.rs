@@ -1,4 +1,5 @@
 use crate::expression::{Binary, Expression, Grouping, Literal, Unary};
+use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, TokenType};
 
 #[derive(Debug)]
@@ -30,17 +31,28 @@ impl std::fmt::Display for Value {
     }
 }
 
-pub struct Interpreter<'expr> {
-    pub expression: &'expr Expression,
+pub struct Interpreter<'stmt> {
+    pub statements: &'stmt Vec<Stmt>,
 }
 
-impl<'expr> Interpreter<'expr> {
-    pub fn new(expression: &'expr Expression) -> Self {
-        Interpreter { expression }
+impl<'stmt> Interpreter<'stmt> {
+    pub fn new(statements: &'stmt Vec<Stmt>) -> Self {
+        Interpreter { statements }
     }
 
-    pub fn evaluate(&self) -> Result<Value, InterpreterError> {
-        self.expression(&self.expression)
+    pub fn execute(&self) -> Result<(), InterpreterError> {
+        for statement in self.statements {
+            match statement {
+                Stmt::Expression(expr_stmt) => {
+                    self.expression(&*expr_stmt.expression)?;
+                }
+                Stmt::Print(print_stmt) => {
+                    let value = self.expression(&*print_stmt.expression)?;
+                    println!("{}", value);
+                }
+            }
+        }
+        Ok(())
     }
 
     fn expression(&self, expression: &Expression) -> Result<Value, InterpreterError> {
@@ -189,8 +201,9 @@ mod tests {
             })),
         });
 
-        let interpreter = Interpreter::new(&expression);
-        let result = interpreter.evaluate().unwrap();
+        let statements: Vec<Stmt> = vec![];
+        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(8.0));
     }
 
@@ -211,8 +224,9 @@ mod tests {
             })),
         });
 
-        let interpreter = Interpreter::new(&expression);
-        let result = interpreter.evaluate().unwrap();
+        let statements: Vec<Stmt> = vec![];
+        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(2.0));
     }
 
@@ -233,8 +247,9 @@ mod tests {
             })),
         });
 
-        let interpreter = Interpreter::new(&expression);
-        let result = interpreter.evaluate().unwrap();
+        let statements: Vec<Stmt> = vec![];
+        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(15.0));
     }
     #[test]
@@ -254,8 +269,9 @@ mod tests {
             })),
         });
 
-        let interpreter = Interpreter::new(&expression);
-        let result = interpreter.evaluate().unwrap();
+        let statements: Vec<Stmt> = vec![];
+        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(2.0));
     }
     #[test]
@@ -286,8 +302,9 @@ mod tests {
             })),
         });
 
-        let interpreter = Interpreter::new(&expression);
-        let result = interpreter.evaluate().unwrap();
+        let statements: Vec<Stmt> = vec![];
+        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(17.0));
     }
 }

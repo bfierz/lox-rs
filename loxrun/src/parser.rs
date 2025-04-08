@@ -35,8 +35,8 @@ impl Parser {
     }
 
     pub fn parse(&mut self) -> Result<Vec<Stmt>, ParserError> {
-        let mut statements = Vec<Stmt>::new();
-        while (!self.is_at_end()) {
+        let mut statements = Vec::new();
+        while !self.is_at_end() {
             match self.statement() {
                 Ok(stmt) => statements.push(stmt),
                 Err(err) => {
@@ -45,7 +45,7 @@ impl Parser {
                 }
             }
         }
-        statements
+        Ok(statements)
     }
 
     pub fn synchronize(&mut self) {
@@ -260,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_parser() {
-        let expression = "1 + 2 * 3 - 4 / 5";
+        let expression = "1 + 2 * 3 - 4 / 5;";
 
         let four_div_five = Box::new(Expression::Binary(Binary {
             left: Box::new(Expression::Literal(Literal {
@@ -315,7 +315,11 @@ mod tests {
         let mut scanner = Scanner::new(expression.to_string());
         let tokens = scanner.scan_tokens();
         let mut parser = Parser::new(tokens.clone());
-        let expression = parser.parse().unwrap();
-        assert_eq!(expression, reference);
+        let statements = &parser.parse().unwrap()[0];
+        let expression = match statements {
+            Stmt::Expression(ExpressionStmt { expression }) => expression.clone(),
+            _ => panic!("Expected an expression statement"),
+        };
+        assert_eq!(*expression, reference);
     }
 }
