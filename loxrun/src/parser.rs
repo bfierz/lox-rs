@@ -1,9 +1,16 @@
 use crate::{
     expression::{Expression, Binary, Grouping, Literal, Unary},
     tokens::{LiteralTypes, Token, TokenType},
+    stmt::{Stmt, ExpressionStmt, PrintStmt},
 };
 
 // Production rules
+// program -> statement* EOF ;
+
+// statement -> exprStmt | printStmt ;
+// exprStmt -> expression ";" ;
+// printStmt -> "print" expression ";" ;
+
 // expression -> equality ;
 // equality -> comparison ( ( "!=" | "==" ) comparison )* ;
 // comparison -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
@@ -27,8 +34,18 @@ impl Parser {
         Parser { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> Result<Expression, ParserError> {
-        self.expression()
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, ParserError> {
+        let mut statements = Vec<Stmt>::new();
+        while (!self.is_at_end()) {
+            match self.statement() {
+                Ok(stmt) => statements.push(stmt),
+                Err(err) => {
+                    eprintln!("Error: {}", err.message);
+                    self.synchronize();
+                }
+            }
+        }
+        statements
     }
 
     pub fn synchronize(&mut self) {
@@ -52,6 +69,30 @@ impl Parser {
                 _ => self.advance(),
             }
         }
+    }
+
+    pub fn statement(&mut self) -> Result<Stmt, ParserError> {
+        if self.match_token(&[TokenType::Print]) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    pub fn print_statement(&mut self) -> Result<Stmt, ParserError> {
+        let value = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expect ';' after value.")?;
+        Ok(Stmt::Print(PrintStmt {
+            expression: Box::new(value),
+        }))
+    }
+
+    pub fn expression_statement(&mut self) -> Result<Stmt, ParserError> {
+        let expr = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.")?;
+        Ok(Stmt::Expression(ExpressionStmt {
+            expression: Box::new(expr),
+        }))
     }
 
     pub fn expression(&mut self) -> Result<Expression, ParserError> {

@@ -8,6 +8,7 @@ mod interpreter;
 mod parser;
 mod printer;
 mod scanner;
+mod stmt;
 mod tokens;
 
 use parser::Parser;
