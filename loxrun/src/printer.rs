@@ -24,6 +24,9 @@ pub fn pretty_print(expr: &Expression) -> String {
             let right = pretty_print(&*unary.right);
             format!("({} {})", unary.operator.lexeme, right)
         }
+        Expression::Variable(variable) => {
+            format!("{}", variable.name)
+        }
     }
 }
 
@@ -48,6 +51,9 @@ pub fn rpn_print(expr: &Expression) -> String {
         Expression::Unary(unary) => {
             let right = rpn_print(&*unary.right);
             format!("{} {}", right, unary.operator.lexeme)
+        }
+        Expression::Variable(variable) => {
+            format!("{}", variable.name)
         }
     }
 }

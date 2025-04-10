@@ -6,6 +6,7 @@ pub enum Expression {
     Grouping(Grouping),
     Literal(Literal),
     Unary(Unary),
+    Variable(Variable),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,4 +30,9 @@ pub struct Literal {
 pub struct Unary {
     pub operator: Token,
     pub right: Box<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variable {
+    pub name: String,
 }

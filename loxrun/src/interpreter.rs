@@ -53,6 +53,14 @@ impl<'stmt> Interpreter<'stmt> {
                     let value = self.expression(&*print_stmt.expression)?;
                     writeln!(self.output, "{}", value);
                 }
+                Stmt::Var(var_stmt) => {
+                    if let Some(initializer) = &var_stmt.initializer {
+                        let value = self.expression(&*initializer)?;
+                        writeln!(self.output, "{} = {}", var_stmt.name.lexeme, value);
+                    } else {
+                        writeln!(self.output, "{} = nil", var_stmt.name.lexeme);
+                    }
+                }
             }
         }
         Ok(())
@@ -64,6 +72,12 @@ impl<'stmt> Interpreter<'stmt> {
             Expression::Grouping(grouping) => self.grouping(grouping),
             Expression::Literal(literal) => self.literal(literal),
             Expression::Unary(unary) => self.unary(unary),
+            Expression::Variable(variable) => {
+                // Handle variable lookup here if needed
+                Err(InterpreterError {
+                    message: format!("Variable {} not found", variable.name),
+                })
+            }
         }
     }
 

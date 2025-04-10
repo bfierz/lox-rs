@@ -1,12 +1,12 @@
 use crate::{
-    expression::{Expression, Binary, Grouping, Literal, Unary},
-    tokens::{LiteralTypes, Token, TokenType},
-    stmt::{Stmt, ExpressionStmt, PrintStmt},
+    expression::{Binary, Expression, Grouping, Literal, Unary, Variable}, stmt::{ExpressionStmt, PrintStmt, Stmt, VarStmt}, tokens::{LiteralTypes, Token, TokenType}
 };
 
 // Production rules
 // program -> statement* EOF ;
 
+// declaration -> varDecl | statement ;
+// varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
 // statement -> exprStmt | printStmt ;
 // exprStmt -> expression ";" ;
 // printStmt -> "print" expression ";" ;
@@ -17,7 +17,7 @@ use crate::{
 // term -> factor ( ( "-" | "+" ) factor )* ;
 // factor -> unary ( ( "/" | "*" ) unary )* ;
 // unary -> ( "!" | "-" ) unary | primary ;
-// primary -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
+// primary -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER ;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -37,7 +37,7 @@ impl Parser {
     pub fn parse(&mut self) -> Result<Vec<Stmt>, ParserError> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
-            match self.statement() {
+            match self.declaration() {
                 Ok(stmt) => statements.push(stmt),
                 Err(err) => {
                     eprintln!("Error: {}", err.message);
@@ -69,6 +69,25 @@ impl Parser {
                 _ => self.advance(),
             }
         }
+    }
+
+    pub fn declaration(&mut self) -> Result<Stmt, ParserError> {
+        if self.match_token(&[TokenType::Var]) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
+    }
+    
+    pub fn var_declaration(&mut self) -> Result<Stmt, ParserError> {
+        let name = self.consume(TokenType::Identifier, "Expect variable name.")?;
+        let initializer = if self.match_token(&[TokenType::Equal]) {
+            Some(Box::new(self.expression()?))
+        } else {
+            None
+        };
+        self.consume(TokenType::Semicolon, "Expect ';' after variable declaration.")?;
+        Ok(Stmt::Var(VarStmt{name, initializer}))
     }
 
     pub fn statement(&mut self) -> Result<Stmt, ParserError> {
@@ -205,6 +224,19 @@ impl Parser {
             Ok(Expression::Grouping(Grouping {
                 expression: Box::new(expr),
             }))
+        } else if self.match_token(&[TokenType::Identifier]) {
+            let identifier = self.previous().clone();
+            match identifier.literal {
+                LiteralTypes::String(ref s) => {
+                    if s.is_empty() {
+                        return Err(ParserError { message: "Empty identifier".to_string() });
+                    }
+                    Ok(Expression::Variable(Variable {
+                        name: s.clone(),
+                    }))
+                }
+                _ => Err(ParserError { message: "Expected identifier".to_string() }),
+            }
         } else {
             Err(ParserError {message: "Expected literal or grouping".to_string()})
         }
