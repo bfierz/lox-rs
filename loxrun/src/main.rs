@@ -82,7 +82,7 @@ fn run(source: String) -> bool {
 
     let statements = parse_result.unwrap();
 
-    let interpreter = interpreter::Interpreter::new(&statements);
+    let mut interpreter = interpreter::Interpreter::new(&statements);
     let result = interpreter.execute();
     if let Err(err) = result {
         eprintln!("{}", err.message);

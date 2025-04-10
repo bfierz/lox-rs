@@ -1,3 +1,4 @@
+use std::io::Write;
 use crate::expression::{Binary, Expression, Grouping, Literal, Unary};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, TokenType};
@@ -33,14 +34,16 @@ impl std::fmt::Display for Value {
 
 pub struct Interpreter<'stmt> {
     pub statements: &'stmt Vec<Stmt>,
+    // Dedicated output stream for the interpreter
+    pub output: Box<dyn Write>,
 }
 
 impl<'stmt> Interpreter<'stmt> {
     pub fn new(statements: &'stmt Vec<Stmt>) -> Self {
-        Interpreter { statements }
+        Interpreter { statements, output: Box::new(std::io::stdout()) }
     }
 
-    pub fn execute(&self) -> Result<(), InterpreterError> {
+    pub fn execute(&mut self) -> Result<(), InterpreterError> {
         for statement in self.statements {
             match statement {
                 Stmt::Expression(expr_stmt) => {
@@ -48,7 +51,7 @@ impl<'stmt> Interpreter<'stmt> {
                 }
                 Stmt::Print(print_stmt) => {
                     let value = self.expression(&*print_stmt.expression)?;
-                    println!("{}", value);
+                    writeln!(self.output, "{}", value);
                 }
             }
         }
@@ -182,7 +185,25 @@ impl<'stmt> Interpreter<'stmt> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tokens::Token;
+    use std::cell::RefCell;
+    use std::io;
+    use std::io::Write;
+    use std::rc::Rc;
+    use crate::{stmt::PrintStmt, tokens::Token};
+
+    // Mocking the output stream for testing
+    struct VecWriter(Rc<RefCell<Vec<u8>>>);
+
+    impl Write for VecWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.borrow_mut().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_interpret_sum() {
@@ -306,5 +327,32 @@ mod tests {
         let interpreter: Interpreter<'_> = Interpreter::new(&statements);
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(17.0));
+    }
+
+    #[test]
+    fn test_print_expression() {
+        let expression = Expression::Binary(Binary {
+            left: Box::new(Expression::Literal(Literal {
+                value: LiteralTypes::Number(5.0),
+            })),
+            operator: Token {
+                token_type: TokenType::Plus,
+                lexeme: "+".to_string(),
+                literal: LiteralTypes::Nil,
+                line: 1,
+            },
+            right: Box::new(Expression::Literal(Literal {
+                value: LiteralTypes::Number(3.0),
+            })),
+        });
+
+        let print_stmt = Stmt::Print(PrintStmt {
+            expression: Box::new(expression),
+        });
+        let statements = vec![print_stmt];
+        let output = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let mut interpreter = Interpreter { statements: &statements, output: Box::new(VecWriter(Rc::clone(&output))) };
+        interpreter.execute().unwrap();
+        assert_eq!(String::from_utf8_lossy(&output.borrow()), "8\n");
     }
 }
