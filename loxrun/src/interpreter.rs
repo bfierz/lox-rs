@@ -1,7 +1,7 @@
 use std::io::Write;
 use crate::expression::{Binary, Expression, Grouping, Literal, Unary};
 use crate::stmt::Stmt;
-use crate::tokens::{LiteralTypes, TokenType};
+use crate::tokens::{LiteralTypes, Token, TokenType};
 
 #[derive(Debug)]
 pub struct InterpreterError {
@@ -32,7 +32,27 @@ impl std::fmt::Display for Value {
     }
 }
 
+pub struct Environment {
+    values: std::collections::HashMap<String, Value>,
+}
+impl Environment {
+    pub fn new() -> Self {
+        Environment { values: std::collections::HashMap::new() }
+    }
+
+    pub fn define(&mut self, name: String, value: Value) {
+        self.values.insert(name, value);
+    }
+
+    pub fn get(&self, name: &String) -> Option<&Value> {
+        self.values.get(name)
+    }
+}
+
 pub struct Interpreter<'stmt> {
+    // Environment for variable storage
+    pub environment: Environment,
+    // Statements to be executed
     pub statements: &'stmt Vec<Stmt>,
     // Dedicated output stream for the interpreter
     pub output: Box<dyn Write>,
@@ -40,7 +60,7 @@ pub struct Interpreter<'stmt> {
 
 impl<'stmt> Interpreter<'stmt> {
     pub fn new(statements: &'stmt Vec<Stmt>) -> Self {
-        Interpreter { statements, output: Box::new(std::io::stdout()) }
+        Interpreter { environment: Environment::new(), statements, output: Box::new(std::io::stdout()) }
     }
 
     pub fn execute(&mut self) -> Result<(), InterpreterError> {
@@ -56,9 +76,9 @@ impl<'stmt> Interpreter<'stmt> {
                 Stmt::Var(var_stmt) => {
                     if let Some(initializer) = &var_stmt.initializer {
                         let value = self.expression(&*initializer)?;
-                        writeln!(self.output, "{} = {}", var_stmt.name.lexeme, value);
+                        self.environment.define(var_stmt.name.lexeme.clone(), value.clone());
                     } else {
-                        writeln!(self.output, "{} = nil", var_stmt.name.lexeme);
+                        self.environment.define(var_stmt.name.lexeme.clone(), Value::Nil);
                     }
                 }
             }
@@ -73,10 +93,12 @@ impl<'stmt> Interpreter<'stmt> {
             Expression::Literal(literal) => self.literal(literal),
             Expression::Unary(unary) => self.unary(unary),
             Expression::Variable(variable) => {
-                // Handle variable lookup here if needed
-                Err(InterpreterError {
-                    message: format!("Variable {} not found", variable.name),
-                })
+                match self.environment.get(&variable.name) {
+                    Some(value) => Ok(value.clone()),
+                    None => Err(InterpreterError {
+                            message: format!("Variable {} not found", variable.name),
+                        })
+                }
             }
         }
     }
@@ -218,6 +240,28 @@ mod tests {
 
         fn flush(&mut self) -> io::Result<()> {
             Ok(())
+        }
+    }
+
+    fn run(source: String) -> Result<String, InterpreterError> {
+
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().clone();
+        assert!(!scanner.had_error);
+
+        let mut parser = Parser::new(tokens);
+        let parse_result = parser.parse();
+        assert!(parse_result.is_ok());
+
+        let statements = parse_result.unwrap();
+
+        let output = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let mut interpreter = Interpreter { environment: Environment::new(), statements: &statements, output: Box::new(VecWriter(Rc::clone(&output))) };
+        let result = interpreter.execute();
+
+        match result {
+            Ok(_) => Ok(String::from_utf8_lossy(&output.borrow()).to_string()),
+            Err(err) => Err(err),
         }
     }
 
@@ -367,7 +411,7 @@ mod tests {
         });
         let statements = vec![print_stmt];
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
-        let mut interpreter = Interpreter { statements: &statements, output: Box::new(VecWriter(Rc::clone(&output))) };
+        let mut interpreter = Interpreter { environment: Environment::new(), statements: &statements, output: Box::new(VecWriter(Rc::clone(&output))) };
         interpreter.execute().unwrap();
         assert_eq!(String::from_utf8_lossy(&output.borrow()), "8\n");
     }
@@ -381,20 +425,70 @@ mod tests {
         print 2 + 1;
         ".to_string();
 
-        let mut scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens().clone();
-        assert!(!scanner.had_error);
-
-        let mut parser = Parser::new(tokens);
-        let parse_result = parser.parse();
-        assert!(parse_result.is_ok());
-
-        let statements = parse_result.unwrap();
-
-        let output = Rc::new(RefCell::new(Vec::<u8>::new()));
-        let mut interpreter = Interpreter { statements: &statements, output: Box::new(VecWriter(Rc::clone(&output))) };
-        let result = interpreter.execute();
-        assert_eq!(String::from_utf8_lossy(&output.borrow()), "one\ntrue\n3\n");
+        let result = run(source);
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "one\ntrue\n3\n");
+    }
+
+    #[test]
+    fn test_uninitialized_variable() {
+        let source = "
+        var a;
+        print a;
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "nil\n");
+    }
+
+    #[test]
+    fn test_print_variable() {
+        let source = "
+        var a = 5;
+        print a;
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "5\n");
+    }
+
+    #[test]
+    fn print_redefined_variable() {
+        let source = "
+        var a = 5;
+        print a;
+        var a = 10;
+        print a;
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "5\n10\n");
+    }
+
+    #[test]
+    fn test_error_undefined_variable() {
+        let source = "
+        print a;
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().message, "Variable a not found");
+    }
+
+    #[test]
+    fn test_expression_from_variables() {
+        let source = "
+        var a = 5;
+        var b = 3;
+        print a + b;
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "8\n");
     }
 }
