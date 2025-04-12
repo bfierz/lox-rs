@@ -204,6 +204,8 @@ mod tests {
     use std::io::Write;
     use std::rc::Rc;
     use crate::{stmt::PrintStmt, tokens::Token};
+    use crate::scanner::Scanner;
+    use crate::parser::Parser;
 
     // Mocking the output stream for testing
     struct VecWriter(Rc<RefCell<Vec<u8>>>);
@@ -368,5 +370,31 @@ mod tests {
         let mut interpreter = Interpreter { statements: &statements, output: Box::new(VecWriter(Rc::clone(&output))) };
         interpreter.execute().unwrap();
         assert_eq!(String::from_utf8_lossy(&output.borrow()), "8\n");
+    }
+
+    #[test]
+    fn test_print_multiple_expressions() {
+
+        let source ="
+        print \"one\";
+        print true;
+        print 2 + 1;
+        ".to_string();
+
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().clone();
+        assert!(!scanner.had_error);
+
+        let mut parser = Parser::new(tokens);
+        let parse_result = parser.parse();
+        assert!(parse_result.is_ok());
+
+        let statements = parse_result.unwrap();
+
+        let output = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let mut interpreter = Interpreter { statements: &statements, output: Box::new(VecWriter(Rc::clone(&output))) };
+        let result = interpreter.execute();
+        assert_eq!(String::from_utf8_lossy(&output.borrow()), "one\ntrue\n3\n");
+        assert!(result.is_ok());
     }
 }
