@@ -4,6 +4,7 @@ use crate::{expression::Expression, tokens::Token};
 pub enum Stmt {
     Expression(ExpressionStmt),
     Print(PrintStmt),
+    Block(BlockStmt),
     Var(VarStmt),
 }
 
@@ -15,6 +16,11 @@ pub struct ExpressionStmt {
 #[derive(Clone)]
 pub struct PrintStmt {
     pub expression: Box<Expression>,
+}
+
+#[derive(Clone)]
+pub struct BlockStmt {
+    pub statements: Vec<Stmt>,
 }
 
 #[derive(Clone)]

@@ -1,5 +1,5 @@
 use crate::{
-    expression::{Assign, Binary, Expression, Grouping, Literal, Unary, Variable}, stmt::{ExpressionStmt, PrintStmt, Stmt, VarStmt}, tokens::{LiteralTypes, Token, TokenType}
+    expression::{Assign, Binary, Expression, Grouping, Literal, Unary, Variable}, stmt::{BlockStmt, ExpressionStmt, PrintStmt, Stmt, VarStmt}, tokens::{LiteralTypes, Token, TokenType}
 };
 
 // Production rules
@@ -7,9 +7,10 @@ use crate::{
 
 // declaration -> varDecl | statement ;
 // varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
-// statement -> exprStmt | printStmt ;
+// statement -> exprStmt | printStmt | block ;
 // exprStmt -> expression ";" ;
 // printStmt -> "print" expression ";" ;
+// block -> "{" declaration* "}" ;
 
 // expression -> assignment ;
 // assignment -> IDENTIFIER "=" expression | equality ;
@@ -94,6 +95,8 @@ impl Parser {
     pub fn statement(&mut self) -> Result<Stmt, ParserError> {
         if self.match_token(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.match_token(&[TokenType::LeftBrace]) {
+            self.block()
         } else {
             self.expression_statement()
         }
@@ -105,6 +108,21 @@ impl Parser {
         Ok(Stmt::Print(PrintStmt {
             expression: Box::new(value),
         }))
+    }
+
+    pub fn block(&mut self) -> Result<Stmt, ParserError> {
+        let mut statements = Vec::new();
+        while !self.is_at_end() && self.tokens[self.current].token_type != TokenType::RightBrace {
+            match self.declaration() {
+                Ok(stmt) => statements.push(stmt),
+                Err(err) => {
+                    eprintln!("Error: {}", err.message);
+                    self.synchronize();
+                }
+            }
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block.")?;
+        Ok(Stmt::Block(BlockStmt { statements }))
     }
 
     pub fn expression_statement(&mut self) -> Result<Stmt, ParserError> {
