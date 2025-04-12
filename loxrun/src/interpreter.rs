@@ -44,8 +44,8 @@ impl Environment {
         self.values.insert(name, value);
     }
 
-    pub fn get(&self, name: &String) -> Option<&Value> {
-        self.values.get(name)
+    pub fn get(&self, name: &Token) -> Option<&Value> {
+        self.values.get(name.lexeme.as_str())
     }
 }
 
@@ -86,7 +86,7 @@ impl<'stmt> Interpreter<'stmt> {
         Ok(())
     }
 
-    fn expression(&self, expression: &Expression) -> Result<Value, InterpreterError> {
+    fn expression(&mut self, expression: &Expression) -> Result<Value, InterpreterError> {
         match expression {
             Expression::Binary(binary) => self.binary(binary),
             Expression::Grouping(grouping) => self.grouping(grouping),
@@ -99,11 +99,16 @@ impl<'stmt> Interpreter<'stmt> {
                             message: format!("Variable {} not found", variable.name),
                         })
                 }
+            },
+            Expression::Assign(assign) => {
+                let value = self.expression(&*assign.value)?;
+                self.environment.define(assign.name.lexeme.clone(), value.clone());
+                Ok(value)
             }
         }
     }
 
-    fn grouping(&self, grouping: &Grouping) -> Result<Value, InterpreterError> {
+    fn grouping(&mut self, grouping: &Grouping) -> Result<Value, InterpreterError> {
         self.expression(&*grouping.expression)
     }
 
@@ -116,7 +121,7 @@ impl<'stmt> Interpreter<'stmt> {
         }
     }
 
-    fn unary(&self, unary: &Unary) -> Result<Value, InterpreterError> {
+    fn unary(&mut self, unary: &Unary) -> Result<Value, InterpreterError> {
         let right = self.expression(&*unary.right)?;
 
         match unary.operator.token_type {
@@ -139,7 +144,7 @@ impl<'stmt> Interpreter<'stmt> {
         }
     }
 
-    fn binary(&self, binary: &Binary) -> Result<Value, InterpreterError> {
+    fn binary(&mut self, binary: &Binary) -> Result<Value, InterpreterError> {
         let left = self.expression(&*binary.left)?;
         let right = self.expression(&*binary.right)?;
 
@@ -283,7 +288,7 @@ mod tests {
         });
 
         let statements: Vec<Stmt> = vec![];
-        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(8.0));
     }
@@ -306,7 +311,7 @@ mod tests {
         });
 
         let statements: Vec<Stmt> = vec![];
-        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(2.0));
     }
@@ -329,7 +334,7 @@ mod tests {
         });
 
         let statements: Vec<Stmt> = vec![];
-        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(15.0));
     }
@@ -351,7 +356,7 @@ mod tests {
         });
 
         let statements: Vec<Stmt> = vec![];
-        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(2.0));
     }
@@ -384,7 +389,7 @@ mod tests {
         });
 
         let statements: Vec<Stmt> = vec![];
-        let interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(17.0));
     }
@@ -490,5 +495,19 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "8\n");
+    }
+
+    #[test]
+    fn test_assignment() {
+        let source = "
+        var a = 5;
+        print a;
+        a = 10;
+        print a;
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "5\n10\n");
     }
 }

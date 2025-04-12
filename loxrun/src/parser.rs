@@ -1,5 +1,5 @@
 use crate::{
-    expression::{Binary, Expression, Grouping, Literal, Unary, Variable}, stmt::{ExpressionStmt, PrintStmt, Stmt, VarStmt}, tokens::{LiteralTypes, Token, TokenType}
+    expression::{Assign, Binary, Expression, Grouping, Literal, Unary, Variable}, stmt::{ExpressionStmt, PrintStmt, Stmt, VarStmt}, tokens::{LiteralTypes, Token, TokenType}
 };
 
 // Production rules
@@ -11,7 +11,8 @@ use crate::{
 // exprStmt -> expression ";" ;
 // printStmt -> "print" expression ";" ;
 
-// expression -> equality ;
+// expression -> assignment ;
+// assignment -> IDENTIFIER "=" expression | equality ;
 // equality -> comparison ( ( "!=" | "==" ) comparison )* ;
 // comparison -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 // term -> factor ( ( "-" | "+" ) factor )* ;
@@ -115,7 +116,29 @@ impl Parser {
     }
 
     pub fn expression(&mut self) -> Result<Expression, ParserError> {
-        self.equality()
+        self.assignment()
+    }
+
+    pub fn assignment(&mut self) -> Result<Expression, ParserError> {
+        let expr = self.equality()?;
+
+        if self.match_token(&[TokenType::Equal]) {
+            let equals = self.previous().clone();
+            let value = self.assignment()?;
+            match expr {
+                Expression::Variable(ref var) => {
+                    return Ok(Expression::Assign(Assign {
+                        name: var.name.clone(),
+                        value: Box::new(value),
+                    }));
+                }
+                _ => {
+                    return Err(ParserError { message: "Invalid assignment target".to_string() });
+                }
+            }
+        }
+
+        Ok(expr)
     }
 
     pub fn equality(&mut self) -> Result<Expression, ParserError> {
@@ -232,7 +255,7 @@ impl Parser {
                         return Err(ParserError { message: "Empty identifier".to_string() });
                     }
                     Ok(Expression::Variable(Variable {
-                        name: s.clone(),
+                        name: identifier.clone(),
                     }))
                 }
                 _ => Err(ParserError { message: "Expected identifier".to_string() }),

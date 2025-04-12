@@ -1,8 +1,14 @@
+use std::f32::consts::E;
+
 use crate::expression::*;
 use crate::tokens::LiteralTypes;
 
 pub fn pretty_print(expr: &Expression) -> String {
     match expr {
+        Expression::Assign(assign) => {
+            let value = pretty_print(&*assign.value);
+            format!("{} = {}", assign.name.lexeme, value)
+        }
         Expression::Binary(binary) => {
             let left = pretty_print(&*binary.left);
             let right = pretty_print(&*binary.right);
@@ -32,6 +38,10 @@ pub fn pretty_print(expr: &Expression) -> String {
 
 pub fn rpn_print(expr: &Expression) -> String {
     match expr {
+        Expression::Assign(assign) => {
+            let value = rpn_print(&*assign.value);
+            format!("{} = {}", assign.name.lexeme, value)
+        }
         Expression::Binary(binary) => {
             let left = rpn_print(&*binary.left);
             let right = rpn_print(&*binary.right);
