@@ -184,23 +184,17 @@ impl<'stmt> Interpreter<'stmt> {
     }
 
     fn logical(&mut self, logical: &Logical) -> Result<Value, InterpreterError> {
-        let mut left = self.expression(&*logical.left)?;
+        let left = self.expression(&*logical.left)?;
         if logical.operator.token_type == TokenType::Or {
             if left.is_true() {
-                left = Value::Bool(true);
                 return Ok(left);
             }
         } else {
             if !left.is_true() {
-                left = Value::Bool(false);
                 return Ok(left);
             }
         }
-        let val = self.expression(&*logical.right);
-        match val {
-            Ok(value) => Ok(Value::Bool(value.is_true())),
-            Err(error) => Err(error)
-        }
+        self.expression(&*logical.right)
     }
 
     fn literal(&self, literal: &Literal) -> Result<Value, InterpreterError> {
@@ -749,6 +743,6 @@ mod tests {
 
         let result = run(source);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "true\ntrue\nfalse\ntrue\ntrue\ntrue\n");
+        assert_eq!(result.unwrap(), "true\ntrue\nfalse\ntrue\n0\n0\n");
     }
 }
