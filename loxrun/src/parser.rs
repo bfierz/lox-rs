@@ -1,16 +1,25 @@
 use crate::{
-    expression::{Expression, Binary, Grouping, Literal, Unary},
-    tokens::{LiteralTypes, Token, TokenType},
+    expression::{Assign, Binary, Expression, Grouping, Literal, Unary, Variable}, stmt::{BlockStmt, ExpressionStmt, PrintStmt, Stmt, VarStmt}, tokens::{LiteralTypes, Token, TokenType}
 };
 
 // Production rules
-// expression -> equality ;
+// program -> statement* EOF ;
+
+// declaration -> varDecl | statement ;
+// varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
+// statement -> exprStmt | printStmt | block ;
+// exprStmt -> expression ";" ;
+// printStmt -> "print" expression ";" ;
+// block -> "{" declaration* "}" ;
+
+// expression -> assignment ;
+// assignment -> IDENTIFIER "=" expression | equality ;
 // equality -> comparison ( ( "!=" | "==" ) comparison )* ;
 // comparison -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 // term -> factor ( ( "-" | "+" ) factor )* ;
 // factor -> unary ( ( "/" | "*" ) unary )* ;
 // unary -> ( "!" | "-" ) unary | primary ;
-// primary -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
+// primary -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER ;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -27,8 +36,18 @@ impl Parser {
         Parser { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> Result<Expression, ParserError> {
-        self.expression()
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, ParserError> {
+        let mut statements = Vec::new();
+        while !self.is_at_end() {
+            match self.declaration() {
+                Ok(stmt) => statements.push(stmt),
+                Err(err) => {
+                    eprintln!("Error: {}", err.message);
+                    self.synchronize();
+                }
+            }
+        }
+        Ok(statements)
     }
 
     pub fn synchronize(&mut self) {
@@ -54,8 +73,90 @@ impl Parser {
         }
     }
 
+    pub fn declaration(&mut self) -> Result<Stmt, ParserError> {
+        if self.match_token(&[TokenType::Var]) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
+    }
+    
+    pub fn var_declaration(&mut self) -> Result<Stmt, ParserError> {
+        let name = self.consume(TokenType::Identifier, "Expect variable name.")?;
+        let initializer = if self.match_token(&[TokenType::Equal]) {
+            Some(Box::new(self.expression()?))
+        } else {
+            None
+        };
+        self.consume(TokenType::Semicolon, "Expect ';' after variable declaration.")?;
+        Ok(Stmt::Var(VarStmt{name, initializer}))
+    }
+
+    pub fn statement(&mut self) -> Result<Stmt, ParserError> {
+        if self.match_token(&[TokenType::Print]) {
+            self.print_statement()
+        } else if self.match_token(&[TokenType::LeftBrace]) {
+            self.block()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    pub fn print_statement(&mut self) -> Result<Stmt, ParserError> {
+        let value = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expect ';' after value.")?;
+        Ok(Stmt::Print(PrintStmt {
+            expression: Box::new(value),
+        }))
+    }
+
+    pub fn block(&mut self) -> Result<Stmt, ParserError> {
+        let mut statements = Vec::new();
+        while !self.is_at_end() && self.tokens[self.current].token_type != TokenType::RightBrace {
+            match self.declaration() {
+                Ok(stmt) => statements.push(stmt),
+                Err(err) => {
+                    eprintln!("Error: {}", err.message);
+                    self.synchronize();
+                }
+            }
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block.")?;
+        Ok(Stmt::Block(BlockStmt { statements }))
+    }
+
+    pub fn expression_statement(&mut self) -> Result<Stmt, ParserError> {
+        let expr = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.")?;
+        Ok(Stmt::Expression(ExpressionStmt {
+            expression: Box::new(expr),
+        }))
+    }
+
     pub fn expression(&mut self) -> Result<Expression, ParserError> {
-        self.equality()
+        self.assignment()
+    }
+
+    pub fn assignment(&mut self) -> Result<Expression, ParserError> {
+        let expr = self.equality()?;
+
+        if self.match_token(&[TokenType::Equal]) {
+            let equals = self.previous().clone();
+            let value = self.assignment()?;
+            match expr {
+                Expression::Variable(ref var) => {
+                    return Ok(Expression::Assign(Assign {
+                        name: var.name.clone(),
+                        value: Box::new(value),
+                    }));
+                }
+                _ => {
+                    return Err(ParserError { message: "Invalid assignment target".to_string() });
+                }
+            }
+        }
+
+        Ok(expr)
     }
 
     pub fn equality(&mut self) -> Result<Expression, ParserError> {
@@ -164,6 +265,19 @@ impl Parser {
             Ok(Expression::Grouping(Grouping {
                 expression: Box::new(expr),
             }))
+        } else if self.match_token(&[TokenType::Identifier]) {
+            let identifier = self.previous().clone();
+            match identifier.literal {
+                LiteralTypes::String(ref s) => {
+                    if s.is_empty() {
+                        return Err(ParserError { message: "Empty identifier".to_string() });
+                    }
+                    Ok(Expression::Variable(Variable {
+                        name: identifier.clone(),
+                    }))
+                }
+                _ => Err(ParserError { message: "Expected identifier".to_string() }),
+            }
         } else {
             Err(ParserError {message: "Expected literal or grouping".to_string()})
         }
@@ -219,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_parser() {
-        let expression = "1 + 2 * 3 - 4 / 5";
+        let expression = "1 + 2 * 3 - 4 / 5;";
 
         let four_div_five = Box::new(Expression::Binary(Binary {
             left: Box::new(Expression::Literal(Literal {
@@ -274,7 +388,11 @@ mod tests {
         let mut scanner = Scanner::new(expression.to_string());
         let tokens = scanner.scan_tokens();
         let mut parser = Parser::new(tokens.clone());
-        let expression = parser.parse().unwrap();
-        assert_eq!(expression, reference);
+        let statements = &parser.parse().unwrap()[0];
+        let expression = match statements {
+            Stmt::Expression(ExpressionStmt { expression }) => expression.clone(),
+            _ => panic!("Expected an expression statement"),
+        };
+        assert_eq!(*expression, reference);
     }
 }

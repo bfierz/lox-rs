@@ -2,10 +2,18 @@ use crate::tokens::{LiteralTypes, Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
+    Assign(Assign),
     Binary(Binary),
     Grouping(Grouping),
     Literal(Literal),
     Unary(Unary),
+    Variable(Variable),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Assign {
+    pub name: Token,
+    pub value: Box<Expression>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,4 +37,9 @@ pub struct Literal {
 pub struct Unary {
     pub operator: Token,
     pub right: Box<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variable {
+    pub name: Token,
 }
