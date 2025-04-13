@@ -1,6 +1,6 @@
 use crate::{
     expression::{Assign, Binary, Expression, Grouping, Literal, Logical, Unary, Variable},
-    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt},
+    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt},
     tokens::{LiteralTypes, Token, TokenType}
 };
 
@@ -9,10 +9,11 @@ use crate::{
 
 // declaration -> varDecl | statement ;
 // varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
-// statement -> exprStmt | ifStmt | printStmt | block ;
+// statement -> exprStmt | ifStmt | printStmt | whileStmt | block ;
 // exprStmt -> expression ";" ;
 // ifStmt -> "if" "(" expression ")" statement ( "else" statement )? ;
 // printStmt -> "print" expression ";" ;
+// whileStmt -> "while" "(" expression ")" statement ;
 // block -> "{" declaration* "}" ;
 
 // expression -> assignment ;
@@ -102,6 +103,8 @@ impl Parser {
             self.if_statement()
         } else if self.match_token(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.match_token(&[TokenType::While]) {
+            self.while_statement()
         } else if self.match_token(&[TokenType::LeftBrace]) {
             self.block()
         } else {
@@ -131,6 +134,17 @@ impl Parser {
         self.consume(TokenType::Semicolon, "Expect ';' after value.")?;
         Ok(Stmt::Print(PrintStmt {
             expression: Box::new(value),
+        }))
+    }
+
+    pub fn while_statement(&mut self) -> Result<Stmt, ParserError> {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.")?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "Expect ')' after condition.")?;
+        let body = Box::new(self.statement()?);
+        Ok(Stmt::While(WhileStmt {
+            condition: Box::new(condition),
+            body,
         }))
     }
 

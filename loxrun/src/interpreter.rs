@@ -139,6 +139,11 @@ impl<'stmt> Interpreter<'stmt> {
                     self.environment.borrow_mut().define(var_stmt.name.lexeme.clone(), Value::Nil);
                 }
             }
+            Stmt::While(while_stmt) => {
+                while self.expression(&*while_stmt.condition)?.is_true() {
+                    self.execute_statement(&*while_stmt.body)?;
+                }
+            }
         }
         Ok(())
     }
@@ -744,5 +749,20 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "true\ntrue\nfalse\ntrue\n0\n0\n");
+    }
+
+    #[test]
+    fn test_while_statement() {
+        let source = "
+        var i = 0;
+        while (i < 5) {
+            print i;
+            i = i + 1;
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "0\n1\n2\n3\n4\n");
     }
 }

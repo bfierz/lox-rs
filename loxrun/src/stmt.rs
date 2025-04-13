@@ -7,6 +7,7 @@ pub enum Stmt {
     Print(PrintStmt),
     Block(BlockStmt),
     Var(VarStmt),
+    While(WhileStmt),
 }
 
 #[derive(Clone)]
@@ -35,4 +36,10 @@ pub struct BlockStmt {
 pub struct VarStmt {
     pub name: Token,
     pub initializer: Option<Box<Expression>>,
+}
+
+#[derive(Clone)]
+pub struct WhileStmt {
+    pub condition: Box<Expression>,
+    pub body: Box<Stmt>,
 }
