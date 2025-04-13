@@ -1,5 +1,7 @@
 use crate::{
-    expression::{Assign, Binary, Expression, Grouping, Literal, Unary, Variable}, stmt::{BlockStmt, ExpressionStmt, PrintStmt, Stmt, VarStmt}, tokens::{LiteralTypes, Token, TokenType}
+    expression::{Assign, Binary, Expression, Grouping, Literal, Unary, Variable},
+    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt},
+    tokens::{LiteralTypes, Token, TokenType}
 };
 
 // Production rules
@@ -7,8 +9,9 @@ use crate::{
 
 // declaration -> varDecl | statement ;
 // varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
-// statement -> exprStmt | printStmt | block ;
+// statement -> exprStmt | ifStmt | printStmt | block ;
 // exprStmt -> expression ";" ;
+// ifStmt -> "if" "(" expression ")" statement ( "else" statement )? ;
 // printStmt -> "print" expression ";" ;
 // block -> "{" declaration* "}" ;
 
@@ -93,13 +96,32 @@ impl Parser {
     }
 
     pub fn statement(&mut self) -> Result<Stmt, ParserError> {
-        if self.match_token(&[TokenType::Print]) {
+        if self.match_token(&[TokenType::If]) {
+            self.if_statement()
+        } else if self.match_token(&[TokenType::Print]) {
             self.print_statement()
         } else if self.match_token(&[TokenType::LeftBrace]) {
             self.block()
         } else {
             self.expression_statement()
         }
+    }
+
+    pub fn if_statement(&mut self) -> Result<Stmt, ParserError> {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.")?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "Expect ')' after condition.")?;
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = if self.match_token(&[TokenType::Else]) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+        Ok(Stmt::If(IfStmt {
+            condition: Box::new(condition),
+            then_branch,
+            else_branch,
+        }))
     }
 
     pub fn print_statement(&mut self) -> Result<Stmt, ParserError> {

@@ -3,6 +3,7 @@ use crate::{expression::Expression, tokens::Token};
 #[derive(Clone)]
 pub enum Stmt {
     Expression(ExpressionStmt),
+    If(IfStmt),
     Print(PrintStmt),
     Block(BlockStmt),
     Var(VarStmt),
@@ -11,6 +12,13 @@ pub enum Stmt {
 #[derive(Clone)]
 pub struct ExpressionStmt {
     pub expression: Box<Expression>,
+}
+
+#[derive(Clone)]
+pub struct IfStmt {
+    pub condition: Box<Expression>,
+    pub then_branch: Box<Stmt>,
+    pub else_branch: Option<Box<Stmt>>,
 }
 
 #[derive(Clone)]

@@ -21,6 +21,14 @@ impl Value {
     pub fn is_nil(&self) -> bool {
         matches!(self, Value::Nil)
     }
+
+    pub fn is_true(&self) -> bool {
+        match self {
+            Value::Bool(value) => *value,
+            Value::Nil => false,
+            _ => true,
+        }
+    }
 }
 
 impl std::fmt::Display for Value {
@@ -107,6 +115,14 @@ impl<'stmt> Interpreter<'stmt> {
         match statement {
             Stmt::Expression(expr_stmt) => {
                 self.expression(&*expr_stmt.expression)?;
+            }
+            Stmt::If(if_stmt) => {
+                let condition = self.expression(&*if_stmt.condition)?;
+                if condition.is_true() {
+                    self.execute_statement(&*if_stmt.then_branch)?;
+                } else if let Some(else_branch) = &if_stmt.else_branch {
+                    self.execute_statement(else_branch)?;
+                }
             }
             Stmt::Print(print_stmt) => {
                 let value = self.expression(&*print_stmt.expression)?;
@@ -637,5 +653,65 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "inner a\nouter b\nglobal c\nouter a\nouter b\nglobal c\nglobal a\nglobal b\nglobal c\n");
+    }
+
+    #[test]
+    fn test_if_statement_true() {
+        let source = "
+        if (true) {
+            print \"True\";
+        } else {
+            print \"False\";
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "True\n");
+    }
+
+    #[test]
+    fn test_if_statement_false() {
+        let source = "
+        if (false) {
+            print \"True\";
+        } else {
+            print \"False\";
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "False\n");
+    }
+
+    #[test]
+    fn test_if_statement_expression() {
+        let source = "
+        if (3 < 2) {
+            print \"True\";
+        } else {
+            print \"False\";
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "False\n");
+    }
+
+    #[test]
+    fn test_if_statement_zero_is_true() {
+        let source = "
+        if (0) {
+            print \"True\";
+        } else {
+            print \"False\";
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "True\n");
     }
 }
