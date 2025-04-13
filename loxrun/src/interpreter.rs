@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::io::Write;
 use std::rc::Rc;
-use crate::expression::{Binary, Expression, Grouping, Literal, Unary};
+use crate::expression::{Binary, Expression, Grouping, Literal, Logical, Unary};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
 
@@ -161,6 +161,7 @@ impl<'stmt> Interpreter<'stmt> {
             Expression::Binary(binary) => self.binary(binary),
             Expression::Grouping(grouping) => self.grouping(grouping),
             Expression::Literal(literal) => self.literal(literal),
+            Expression::Logical(logical) => self.logical(logical),
             Expression::Unary(unary) => self.unary(unary),
             Expression::Variable(variable) => {
                 match self.environment.borrow().get(&variable.name) {
@@ -180,6 +181,26 @@ impl<'stmt> Interpreter<'stmt> {
 
     fn grouping(&mut self, grouping: &Grouping) -> Result<Value, InterpreterError> {
         self.expression(&*grouping.expression)
+    }
+
+    fn logical(&mut self, logical: &Logical) -> Result<Value, InterpreterError> {
+        let mut left = self.expression(&*logical.left)?;
+        if logical.operator.token_type == TokenType::Or {
+            if left.is_true() {
+                left = Value::Bool(true);
+                return Ok(left);
+            }
+        } else {
+            if !left.is_true() {
+                left = Value::Bool(false);
+                return Ok(left);
+            }
+        }
+        let val = self.expression(&*logical.right);
+        match val {
+            Ok(value) => Ok(Value::Bool(value.is_true())),
+            Err(error) => Err(error)
+        }
     }
 
     fn literal(&self, literal: &Literal) -> Result<Value, InterpreterError> {
@@ -713,5 +734,21 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "True\n");
+    }
+
+    #[test]
+    fn test_logical_or() {
+        let source = "
+        print true or false;
+        print false or true;
+        print false or false;
+        print true or true;
+        print 0 or 1;
+        print 0 or false;
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "true\ntrue\nfalse\ntrue\ntrue\ntrue\n");
     }
 }

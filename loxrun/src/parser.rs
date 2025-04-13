@@ -1,5 +1,5 @@
 use crate::{
-    expression::{Assign, Binary, Expression, Grouping, Literal, Unary, Variable},
+    expression::{Assign, Binary, Expression, Grouping, Literal, Logical, Unary, Variable},
     stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt},
     tokens::{LiteralTypes, Token, TokenType}
 };
@@ -16,7 +16,9 @@ use crate::{
 // block -> "{" declaration* "}" ;
 
 // expression -> assignment ;
-// assignment -> IDENTIFIER "=" expression | equality ;
+// assignment -> IDENTIFIER "=" expression | logical_or ;
+// logical_or -> logical_and ( "or" logical_and )* ;
+// logical_and -> equality ( "and" equality )* ;
 // equality -> comparison ( ( "!=" | "==" ) comparison )* ;
 // comparison -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 // term -> factor ( ( "-" | "+" ) factor )* ;
@@ -160,10 +162,9 @@ impl Parser {
     }
 
     pub fn assignment(&mut self) -> Result<Expression, ParserError> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
 
         if self.match_token(&[TokenType::Equal]) {
-            let equals = self.previous().clone();
             let value = self.assignment()?;
             match expr {
                 Expression::Variable(ref var) => {
@@ -176,6 +177,38 @@ impl Parser {
                     return Err(ParserError { message: "Invalid assignment target".to_string() });
                 }
             }
+        }
+
+        Ok(expr)
+    }
+
+    pub fn or(&mut self) -> Result<Expression, ParserError> {
+        let mut expr = self.and()?;
+
+        while self.match_token(&[TokenType::Or]) {
+            let operator = self.previous().clone();
+            let right = self.and()?;
+            expr = Expression::Logical(Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            });
+        }
+
+        Ok(expr)
+    }
+
+    pub fn and(&mut self) -> Result<Expression, ParserError> {
+        let mut expr = self.equality()?;
+
+        while self.match_token(&[TokenType::And]) {
+            let operator = self.previous().clone();
+            let right = self.equality()?;
+            expr = Expression::Logical(Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            });
         }
 
         Ok(expr)

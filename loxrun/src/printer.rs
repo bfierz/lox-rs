@@ -26,6 +26,11 @@ pub fn pretty_print(expr: &Expression) -> String {
                 LiteralTypes::Nil => format!("nil"),
             }
         }
+        Expression::Logical(logical) => {
+            let left = pretty_print(&*logical.left);
+            let right = pretty_print(&*logical.right);
+            format!("({} {} {})", logical.operator.lexeme, left, right)
+        }
         Expression::Unary(unary) => {
             let right = pretty_print(&*unary.right);
             format!("({} {})", unary.operator.lexeme, right)
@@ -57,6 +62,11 @@ pub fn rpn_print(expr: &Expression) -> String {
                 LiteralTypes::Bool(b) => format!("{}", b),
                 LiteralTypes::Nil => format!("nil"),
             }
+        }
+        Expression::Logical(logical) => {
+            let left = rpn_print(&*logical.left);
+            let right = rpn_print(&*logical.right);
+            format!("{} {} {}", left, right, logical.operator.lexeme)
         }
         Expression::Unary(unary) => {
             let right = rpn_print(&*unary.right);
