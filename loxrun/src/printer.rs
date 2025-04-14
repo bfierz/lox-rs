@@ -1,5 +1,3 @@
-use std::f32::consts::E;
-
 use crate::expression::*;
 use crate::tokens::LiteralTypes;
 
@@ -25,6 +23,11 @@ pub fn pretty_print(expr: &Expression) -> String {
                 LiteralTypes::Bool(b) => format!("{}", b),
                 LiteralTypes::Nil => format!("nil"),
             }
+        }
+        Expression::Logical(logical) => {
+            let left = pretty_print(&*logical.left);
+            let right = pretty_print(&*logical.right);
+            format!("({} {} {})", logical.operator.lexeme, left, right)
         }
         Expression::Unary(unary) => {
             let right = pretty_print(&*unary.right);
@@ -57,6 +60,11 @@ pub fn rpn_print(expr: &Expression) -> String {
                 LiteralTypes::Bool(b) => format!("{}", b),
                 LiteralTypes::Nil => format!("nil"),
             }
+        }
+        Expression::Logical(logical) => {
+            let left = rpn_print(&*logical.left);
+            let right = rpn_print(&*logical.right);
+            format!("{} {} {}", left, right, logical.operator.lexeme)
         }
         Expression::Unary(unary) => {
             let right = rpn_print(&*unary.right);

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::io::Write;
 use std::rc::Rc;
-use crate::expression::{Binary, Expression, Grouping, Literal, Unary};
+use crate::expression::{Binary, Expression, Grouping, Literal, Logical, Unary};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
 
@@ -20,6 +20,14 @@ pub enum Value {
 impl Value {
     pub fn is_nil(&self) -> bool {
         matches!(self, Value::Nil)
+    }
+
+    pub fn is_true(&self) -> bool {
+        match self {
+            Value::Bool(value) => *value,
+            Value::Nil => false,
+            _ => true,
+        }
     }
 }
 
@@ -108,6 +116,14 @@ impl<'stmt> Interpreter<'stmt> {
             Stmt::Expression(expr_stmt) => {
                 self.expression(&*expr_stmt.expression)?;
             }
+            Stmt::If(if_stmt) => {
+                let condition = self.expression(&*if_stmt.condition)?;
+                if condition.is_true() {
+                    self.execute_statement(&*if_stmt.then_branch)?;
+                } else if let Some(else_branch) = &if_stmt.else_branch {
+                    self.execute_statement(else_branch)?;
+                }
+            }
             Stmt::Print(print_stmt) => {
                 let value = self.expression(&*print_stmt.expression)?;
                 writeln!(self.output, "{}", value);
@@ -121,6 +137,11 @@ impl<'stmt> Interpreter<'stmt> {
                     self.environment.borrow_mut().define(var_stmt.name.lexeme.clone(), value.clone());
                 } else {
                     self.environment.borrow_mut().define(var_stmt.name.lexeme.clone(), Value::Nil);
+                }
+            }
+            Stmt::While(while_stmt) => {
+                while self.expression(&*while_stmt.condition)?.is_true() {
+                    self.execute_statement(&*while_stmt.body)?;
                 }
             }
         }
@@ -145,6 +166,7 @@ impl<'stmt> Interpreter<'stmt> {
             Expression::Binary(binary) => self.binary(binary),
             Expression::Grouping(grouping) => self.grouping(grouping),
             Expression::Literal(literal) => self.literal(literal),
+            Expression::Logical(logical) => self.logical(logical),
             Expression::Unary(unary) => self.unary(unary),
             Expression::Variable(variable) => {
                 match self.environment.borrow().get(&variable.name) {
@@ -156,7 +178,7 @@ impl<'stmt> Interpreter<'stmt> {
             },
             Expression::Assign(assign) => {
                 let value = self.expression(&*assign.value)?;
-                self.environment.borrow_mut().assign(&assign.name, value.clone());
+                self.environment.borrow_mut().assign(&assign.name, value.clone())?;
                 Ok(value)
             }
         }
@@ -164,6 +186,20 @@ impl<'stmt> Interpreter<'stmt> {
 
     fn grouping(&mut self, grouping: &Grouping) -> Result<Value, InterpreterError> {
         self.expression(&*grouping.expression)
+    }
+
+    fn logical(&mut self, logical: &Logical) -> Result<Value, InterpreterError> {
+        let left = self.expression(&*logical.left)?;
+        if logical.operator.token_type == TokenType::Or {
+            if left.is_true() {
+                return Ok(left);
+            }
+        } else {
+            if !left.is_true() {
+                return Ok(left);
+            }
+        }
+        self.expression(&*logical.right)
     }
 
     fn literal(&self, literal: &Literal) -> Result<Value, InterpreterError> {
@@ -637,5 +673,109 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "inner a\nouter b\nglobal c\nouter a\nouter b\nglobal c\nglobal a\nglobal b\nglobal c\n");
+    }
+
+    #[test]
+    fn test_if_statement_true() {
+        let source = "
+        if (true) {
+            print \"True\";
+        } else {
+            print \"False\";
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "True\n");
+    }
+
+    #[test]
+    fn test_if_statement_false() {
+        let source = "
+        if (false) {
+            print \"True\";
+        } else {
+            print \"False\";
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "False\n");
+    }
+
+    #[test]
+    fn test_if_statement_expression() {
+        let source = "
+        if (3 < 2) {
+            print \"True\";
+        } else {
+            print \"False\";
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "False\n");
+    }
+
+    #[test]
+    fn test_if_statement_zero_is_true() {
+        let source = "
+        if (0) {
+            print \"True\";
+        } else {
+            print \"False\";
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "True\n");
+    }
+
+    #[test]
+    fn test_logical_or() {
+        let source = "
+        print true or false;
+        print false or true;
+        print false or false;
+        print true or true;
+        print 0 or 1;
+        print 0 or false;
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "true\ntrue\nfalse\ntrue\n0\n0\n");
+    }
+
+    #[test]
+    fn test_while_statement() {
+        let source = "
+        var i = 0;
+        while (i < 5) {
+            print i;
+            i = i + 1;
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "0\n1\n2\n3\n4\n");
+    }
+
+    #[test]
+    fn test_for_statement() {
+        let source = "
+        for (var i = 0; i < 5; i = i + 1) {
+            print i;
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "0\n1\n2\n3\n4\n");
     }
 }
