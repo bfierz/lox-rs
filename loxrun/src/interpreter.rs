@@ -178,7 +178,7 @@ impl<'stmt> Interpreter<'stmt> {
             },
             Expression::Assign(assign) => {
                 let value = self.expression(&*assign.value)?;
-                self.environment.borrow_mut().assign(&assign.name, value.clone());
+                self.environment.borrow_mut().assign(&assign.name, value.clone())?;
                 Ok(value)
             }
         }
@@ -758,6 +758,19 @@ mod tests {
         while (i < 5) {
             print i;
             i = i + 1;
+        }
+        ".to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "0\n1\n2\n3\n4\n");
+    }
+
+    #[test]
+    fn test_for_statement() {
+        let source = "
+        for (var i = 0; i < 5; i = i + 1) {
+            print i;
         }
         ".to_string();
 

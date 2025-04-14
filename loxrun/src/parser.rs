@@ -9,8 +9,9 @@ use crate::{
 
 // declaration -> varDecl | statement ;
 // varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
-// statement -> exprStmt | ifStmt | printStmt | whileStmt | block ;
+// statement -> exprStmt | forStmt | ifStmt | printStmt | whileStmt | block ;
 // exprStmt -> expression ";" ;
+// forStmt -> "for" "(" (varDecl | exprStmt | ";") expression? ";" expression? ")" statement ;
 // ifStmt -> "if" "(" expression ")" statement ( "else" statement )? ;
 // printStmt -> "print" expression ";" ;
 // whileStmt -> "while" "(" expression ")" statement ;
@@ -99,7 +100,9 @@ impl Parser {
     }
 
     pub fn statement(&mut self) -> Result<Stmt, ParserError> {
-        if self.match_token(&[TokenType::If]) {
+        if self.match_token(&[TokenType::For]) {
+            self.for_statement()
+        } else if self.match_token(&[TokenType::If]) {
             self.if_statement()
         } else if self.match_token(&[TokenType::Print]) {
             self.print_statement()
@@ -109,6 +112,53 @@ impl Parser {
             self.block()
         } else {
             self.expression_statement()
+        }
+    }
+
+    pub fn for_statement(&mut self) -> Result<Stmt, ParserError> {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.")?;
+
+        let initializer = if self.match_token(&[TokenType::Var]) {
+            Some(self.var_declaration()?)
+        } else if self.match_token(&[TokenType::Semicolon]) {
+            None
+        } else {
+            Some(self.expression_statement()?)
+        };
+
+        let condition = if !self.check(&TokenType::Semicolon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(TokenType::Semicolon, "Expect ';' after loop condition.")?;
+
+        let increment = if !self.check(&TokenType::RightParen) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(TokenType::RightParen, "Expect ')' after for clauses.")?;
+
+        let mut body = Box::new(self.statement()?);
+
+        if let Some(increment) = increment {
+            body = Box::new(Stmt::Block(BlockStmt {
+                statements: vec![*body, Stmt::Expression(ExpressionStmt { expression: Box::new(increment) })],
+            }));
+        }
+
+        if let Some(condition) = condition {
+            body = Box::new(Stmt::While(WhileStmt {
+                condition: Box::new(condition),
+                body,
+            }));
+        }
+
+        if let Some(initializer) = initializer {
+            Ok(Stmt::Block(BlockStmt { statements: vec![initializer, *body] }))
+        } else {
+            Ok(*body)
         }
     }
 
