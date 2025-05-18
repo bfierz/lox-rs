@@ -13,7 +13,14 @@ pub struct Scanner {
 
 impl Scanner {
     pub fn new(source: String) -> Self {
-        Scanner { source, had_error: false, tokens: Vec::new(), start: 0, current: 0, line: 1 }
+        Scanner {
+            source,
+            had_error: false,
+            tokens: Vec::new(),
+            start: 0,
+            current: 0,
+            line: 1,
+        }
     }
 
     pub fn scan_tokens(&mut self) -> &Vec<Token> {
@@ -24,7 +31,12 @@ impl Scanner {
         }
 
         // Placeholder: add a single dummy token
-        self.tokens.push(Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, self.line));
+        self.tokens.push(Token::new(
+            TokenType::Eof,
+            "".to_string(),
+            LiteralTypes::Nil,
+            self.line,
+        ));
         &self.tokens
     }
 
@@ -41,28 +53,56 @@ impl Scanner {
             '+' => self.add_token(TokenType::Plus),
             ';' => self.add_token(TokenType::Semicolon),
             '*' => self.add_token(TokenType::Star),
-            '!' => if self.match_next('=') { self.add_token(TokenType::BangEqual) } else { self.add_token(TokenType::Bang) },
-            '=' => if self.match_next('=') { self.add_token(TokenType::EqualEqual) } else { self.add_token(TokenType::Equal) },
-            '<' => if self.match_next('=') { self.add_token(TokenType::LessEqual) } else { self.add_token(TokenType::Less) },
-            '>' => if self.match_next('=') { self.add_token(TokenType::GreaterEqual) } else { self.add_token(TokenType::Greater) },
-            '/' => if self.match_next('/') {
-                        // A comment goes until the end of the line.
-                        while self.peek() != '\n' && !self.is_at_end() {
-                            self.advance();
-                        }
-                    } else {
-                        self.add_token(TokenType::Slash);
-                    },
+            '!' => {
+                if self.match_next('=') {
+                    self.add_token(TokenType::BangEqual)
+                } else {
+                    self.add_token(TokenType::Bang)
+                }
+            }
+            '=' => {
+                if self.match_next('=') {
+                    self.add_token(TokenType::EqualEqual)
+                } else {
+                    self.add_token(TokenType::Equal)
+                }
+            }
+            '<' => {
+                if self.match_next('=') {
+                    self.add_token(TokenType::LessEqual)
+                } else {
+                    self.add_token(TokenType::Less)
+                }
+            }
+            '>' => {
+                if self.match_next('=') {
+                    self.add_token(TokenType::GreaterEqual)
+                } else {
+                    self.add_token(TokenType::Greater)
+                }
+            }
+            '/' => {
+                if self.match_next('/') {
+                    // A comment goes until the end of the line.
+                    while self.peek() != '\n' && !self.is_at_end() {
+                        self.advance();
+                    }
+                } else {
+                    self.add_token(TokenType::Slash);
+                }
+            }
             ' ' | '\r' | '\t' => (), // Ignore whitespace.
             '\n' => self.line += 1,
             '"' => self.string(),
-            _ => if c.is_ascii_digit() {
-                self.number();
-            } else if self.is_alpha(c) {
-                self.identifier();
-            } else {
-                self.error(self.line, "Unexpected character.")
-            },
+            _ => {
+                if c.is_ascii_digit() {
+                    self.number();
+                } else if self.is_alpha(c) {
+                    self.identifier();
+                } else {
+                    self.error(self.line, "Unexpected character.")
+                }
+            }
         }
     }
 
@@ -92,7 +132,7 @@ impl Scanner {
         while self.is_alpha_numeric(self.peek()) {
             self.advance();
         }
-    
+
         let text = &self.source[self.start as usize..self.current as usize];
         let token_type = self.get_keyword(text);
 
@@ -124,13 +164,17 @@ impl Scanner {
             }
         }
 
-        let value: f64 = self.source[self.start as usize..self.current as usize].parse().unwrap();
+        let value: f64 = self.source[self.start as usize..self.current as usize]
+            .parse()
+            .unwrap();
         self.add_token_with_literal(TokenType::Number, LiteralTypes::Number(value));
     }
 
     fn string(&mut self) {
         while self.peek() != '"' && !self.is_at_end() {
-            if self.peek() == '\n' { self.line += 1; }
+            if self.peek() == '\n' {
+                self.line += 1;
+            }
             self.advance();
         }
 
@@ -173,7 +217,10 @@ impl Scanner {
         if self.current + 1 >= self.source.len() as i32 {
             '\0'
         } else {
-            self.source.chars().nth((self.current + 1) as usize).unwrap()
+            self.source
+                .chars()
+                .nth((self.current + 1) as usize)
+                .unwrap()
         }
     }
 
@@ -182,10 +229,8 @@ impl Scanner {
     }
 
     fn is_alpha(&self, c: char) -> bool {
-        (c >= 'a' && c <= 'z') ||
-        (c >= 'A' && c <= 'Z') ||
-         c == '_'
-    } 
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+    }
 
     fn is_at_end(&self) -> bool {
         self.current >= self.source.len() as i32
@@ -197,13 +242,14 @@ impl Scanner {
         c
     }
 
-    fn add_token(&mut self, token_type:TokenType) {
+    fn add_token(&mut self, token_type: TokenType) {
         self.add_token_with_literal(token_type, LiteralTypes::Nil);
     }
 
     fn add_token_with_literal(&mut self, token_type: TokenType, literal: LiteralTypes) {
         let text = &self.source[self.start as usize..self.current as usize];
-        self.tokens.push(Token::new(token_type, text.to_string(), literal, self.line));
+        self.tokens
+            .push(Token::new(token_type, text.to_string(), literal, self.line));
     }
 
     fn error(&mut self, line: i32, message: &str) {
@@ -232,70 +278,100 @@ mod tests {
 
     #[test]
     fn test_single_character_tokens() {
-        assert_tokens("(){}.,-+;*", vec![
-            Token::new(TokenType::LeftParen, "(".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::RightParen, ")".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::LeftBrace, "{".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::RightBrace, "}".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Dot, ".".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Comma, ",".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Minus, "-".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Plus, "+".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Semicolon, ";".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Star, "*".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
-        ]);
+        assert_tokens(
+            "(){}.,-+;*",
+            vec![
+                Token::new(TokenType::LeftParen, "(".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::RightParen, ")".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::LeftBrace, "{".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::RightBrace, "}".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Dot, ".".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Comma, ",".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Minus, "-".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Plus, "+".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Semicolon, ";".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Star, "*".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
+            ],
+        );
     }
 
     #[test]
     fn test_keywords() {
-        assert_tokens("and class else false for fun if nil or print return super this true var while", vec![
-            Token::new(TokenType::And, "and".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Class, "class".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Else, "else".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::False, "false".to_string(), LiteralTypes::Bool(false), 1),
-            Token::new(TokenType::For, "for".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Fun, "fun".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::If, "if".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Nil, "nil".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Or, "or".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Print, "print".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Return, "return".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Super, "super".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::This, "this".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::True, "true".to_string(), LiteralTypes::Bool(true), 1),
-            Token::new(TokenType::Var, "var".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::While, "while".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
-        ]);
+        assert_tokens(
+            "and class else false for fun if nil or print return super this true var while",
+            vec![
+                Token::new(TokenType::And, "and".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Class, "class".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Else, "else".to_string(), LiteralTypes::Nil, 1),
+                Token::new(
+                    TokenType::False,
+                    "false".to_string(),
+                    LiteralTypes::Bool(false),
+                    1,
+                ),
+                Token::new(TokenType::For, "for".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Fun, "fun".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::If, "if".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Nil, "nil".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Or, "or".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Print, "print".to_string(), LiteralTypes::Nil, 1),
+                Token::new(
+                    TokenType::Return,
+                    "return".to_string(),
+                    LiteralTypes::Nil,
+                    1,
+                ),
+                Token::new(TokenType::Super, "super".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::This, "this".to_string(), LiteralTypes::Nil, 1),
+                Token::new(
+                    TokenType::True,
+                    "true".to_string(),
+                    LiteralTypes::Bool(true),
+                    1,
+                ),
+                Token::new(TokenType::Var, "var".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::While, "while".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
+            ],
+        );
     }
 
     #[test]
     fn test_identifiers() {
-        assert_tokens("foo bar baz", vec![
-            Token::new_identifier("foo".to_string(), 1),
-            Token::new_identifier("bar".to_string(), 1),
-            Token::new_identifier("baz".to_string(), 1),
-            Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
-        ]);
+        assert_tokens(
+            "foo bar baz",
+            vec![
+                Token::new_identifier("foo".to_string(), 1),
+                Token::new_identifier("bar".to_string(), 1),
+                Token::new_identifier("baz".to_string(), 1),
+                Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
+            ],
+        );
     }
 
     #[test]
     fn test_numbers() {
-        assert_tokens("123 45.67", vec![
-            Token::new_number("123".to_string(), 1),
-            Token::new_number("45.67".to_string(), 1),
-            Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
-        ]);
+        assert_tokens(
+            "123 45.67",
+            vec![
+                Token::new_number("123".to_string(), 1),
+                Token::new_number("45.67".to_string(), 1),
+                Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
+            ],
+        );
     }
 
     #[test]
     fn test_strings() {
-        assert_tokens("\"hello\" \"world\"", vec![
-            Token::new_string("\"hello\"".to_string(), 1),
-            Token::new_string("\"world\"".to_string(), 1),
-            Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
-        ]);
+        assert_tokens(
+            "\"hello\" \"world\"",
+            vec![
+                Token::new_string("\"hello\"".to_string(), 1),
+                Token::new_string("\"world\"".to_string(), 1),
+                Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
+            ],
+        );
     }
 
     #[test]
@@ -307,11 +383,14 @@ mod tests {
 
     #[test]
     fn test_hello_world() {
-        assert_tokens("print \"Hello, world!\";", vec![
-            Token::new(TokenType::Print, "print".to_string(), LiteralTypes::Nil, 1),
-            Token::new_string("\"Hello, world!\"".to_string(), 1),
-            Token::new(TokenType::Semicolon, ";".to_string(), LiteralTypes::Nil, 1),
-            Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
-        ]);
+        assert_tokens(
+            "print \"Hello, world!\";",
+            vec![
+                Token::new(TokenType::Print, "print".to_string(), LiteralTypes::Nil, 1),
+                Token::new_string("\"Hello, world!\"".to_string(), 1),
+                Token::new(TokenType::Semicolon, ";".to_string(), LiteralTypes::Nil, 1),
+                Token::new(TokenType::Eof, "".to_string(), LiteralTypes::Nil, 1),
+            ],
+        );
     }
 }

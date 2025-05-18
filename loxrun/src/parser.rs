@@ -1,7 +1,7 @@
 use crate::{
     expression::{Assign, Binary, Expression, Grouping, Literal, Logical, Unary, Variable},
     stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt},
-    tokens::{LiteralTypes, Token, TokenType}
+    tokens::{LiteralTypes, Token, TokenType},
 };
 
 // Production rules
@@ -87,7 +87,7 @@ impl Parser {
             self.statement()
         }
     }
-    
+
     pub fn var_declaration(&mut self) -> Result<Stmt, ParserError> {
         let name = self.consume(TokenType::Identifier, "Expect variable name.")?;
         let initializer = if self.match_token(&[TokenType::Equal]) {
@@ -95,8 +95,11 @@ impl Parser {
         } else {
             None
         };
-        self.consume(TokenType::Semicolon, "Expect ';' after variable declaration.")?;
-        Ok(Stmt::Var(VarStmt{name, initializer}))
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        )?;
+        Ok(Stmt::Var(VarStmt { name, initializer }))
     }
 
     pub fn statement(&mut self) -> Result<Stmt, ParserError> {
@@ -144,7 +147,12 @@ impl Parser {
 
         if let Some(increment) = increment {
             body = Box::new(Stmt::Block(BlockStmt {
-                statements: vec![*body, Stmt::Expression(ExpressionStmt { expression: Box::new(increment) })],
+                statements: vec![
+                    *body,
+                    Stmt::Expression(ExpressionStmt {
+                        expression: Box::new(increment),
+                    }),
+                ],
             }));
         }
 
@@ -156,7 +164,9 @@ impl Parser {
         }
 
         if let Some(initializer) = initializer {
-            Ok(Stmt::Block(BlockStmt { statements: vec![initializer, *body] }))
+            Ok(Stmt::Block(BlockStmt {
+                statements: vec![initializer, *body],
+            }))
         } else {
             Ok(*body)
         }
@@ -238,7 +248,9 @@ impl Parser {
                     }));
                 }
                 _ => {
-                    return Err(ParserError { message: "Invalid assignment target".to_string() });
+                    return Err(ParserError {
+                        message: "Invalid assignment target".to_string(),
+                    });
                 }
             }
         }
@@ -297,7 +309,12 @@ impl Parser {
     pub fn comparison(&mut self) -> Result<Expression, ParserError> {
         let mut expr = self.term()?;
 
-        while self.match_token(&[TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual]) {
+        while self.match_token(&[
+            TokenType::Greater,
+            TokenType::GreaterEqual,
+            TokenType::Less,
+            TokenType::LessEqual,
+        ]) {
             let operator = self.previous().clone();
             let right = self.term()?;
             expr = Expression::Binary(Binary {
@@ -389,16 +406,22 @@ impl Parser {
             match identifier.literal {
                 LiteralTypes::String(ref s) => {
                     if s.is_empty() {
-                        return Err(ParserError { message: "Empty identifier".to_string() });
+                        return Err(ParserError {
+                            message: "Empty identifier".to_string(),
+                        });
                     }
                     Ok(Expression::Variable(Variable {
                         name: identifier.clone(),
                     }))
                 }
-                _ => Err(ParserError { message: "Expected identifier".to_string() }),
+                _ => Err(ParserError {
+                    message: "Expected identifier".to_string(),
+                }),
             }
         } else {
-            Err(ParserError {message: "Expected literal or grouping".to_string()})
+            Err(ParserError {
+                message: "Expected literal or grouping".to_string(),
+            })
         }
     }
 
@@ -418,7 +441,9 @@ impl Parser {
             self.advance();
             Ok(self.previous())
         } else {
-            Err(ParserError { message: message.to_string() })
+            Err(ParserError {
+                message: message.to_string(),
+            })
         }
     }
 

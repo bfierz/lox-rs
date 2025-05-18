@@ -1,9 +1,9 @@
-use std::cell::RefCell;
-use std::io::Write;
-use std::rc::Rc;
 use crate::expression::{Binary, Expression, Grouping, Literal, Logical, Unary};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
+use std::cell::RefCell;
+use std::io::Write;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct InterpreterError {
@@ -43,7 +43,6 @@ impl std::fmt::Display for Value {
 }
 
 pub struct Environment {
-
     // Parent environment for nested scopes
     enclosing: Option<Rc<RefCell<Environment>>>,
 
@@ -52,11 +51,17 @@ pub struct Environment {
 }
 impl Environment {
     pub fn new() -> Self {
-        Environment { enclosing: None, values: std::collections::HashMap::new() }
+        Environment {
+            enclosing: None,
+            values: std::collections::HashMap::new(),
+        }
     }
 
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
-        Environment { enclosing: Some(enclosing), values: std::collections::HashMap::new() }
+        Environment {
+            enclosing: Some(enclosing),
+            values: std::collections::HashMap::new(),
+        }
     }
 
     pub fn define(&mut self, name: String, value: Value) {
@@ -101,7 +106,11 @@ pub struct Interpreter<'stmt> {
 impl<'stmt> Interpreter<'stmt> {
     pub fn new(statements: &'stmt Vec<Stmt>) -> Self {
         let env = Rc::new(RefCell::new(Environment::new()));
-        Interpreter { environment: env, statements, output: Box::new(std::io::stdout()) }
+        Interpreter {
+            environment: env,
+            statements,
+            output: Box::new(std::io::stdout()),
+        }
     }
 
     pub fn execute(&mut self) -> Result<(), InterpreterError> {
@@ -134,9 +143,13 @@ impl<'stmt> Interpreter<'stmt> {
             Stmt::Var(var_stmt) => {
                 if let Some(initializer) = &var_stmt.initializer {
                     let value = self.expression(&*initializer)?;
-                    self.environment.borrow_mut().define(var_stmt.name.lexeme.clone(), value.clone());
+                    self.environment
+                        .borrow_mut()
+                        .define(var_stmt.name.lexeme.clone(), value.clone());
                 } else {
-                    self.environment.borrow_mut().define(var_stmt.name.lexeme.clone(), Value::Nil);
+                    self.environment
+                        .borrow_mut()
+                        .define(var_stmt.name.lexeme.clone(), Value::Nil);
                 }
             }
             Stmt::While(while_stmt) => {
@@ -149,7 +162,6 @@ impl<'stmt> Interpreter<'stmt> {
     }
 
     fn execute_block(&mut self, statements: &Vec<Stmt>) -> Result<(), InterpreterError> {
-
         let previous = Rc::clone(&self.environment);
         let new_environment = Environment::with_enclosing(previous.clone());
         self.environment = Rc::new(RefCell::new(new_environment));
@@ -168,17 +180,17 @@ impl<'stmt> Interpreter<'stmt> {
             Expression::Literal(literal) => self.literal(literal),
             Expression::Logical(logical) => self.logical(logical),
             Expression::Unary(unary) => self.unary(unary),
-            Expression::Variable(variable) => {
-                match self.environment.borrow().get(&variable.name) {
-                    Some(value) => Ok(value.clone()),
-                    None => Err(InterpreterError {
-                            message: format!("Variable {} not found", variable.name.lexeme),
-                        })
-                }
+            Expression::Variable(variable) => match self.environment.borrow().get(&variable.name) {
+                Some(value) => Ok(value.clone()),
+                None => Err(InterpreterError {
+                    message: format!("Variable {} not found", variable.name.lexeme),
+                }),
             },
             Expression::Assign(assign) => {
                 let value = self.expression(&*assign.value)?;
-                self.environment.borrow_mut().assign(&assign.name, value.clone())?;
+                self.environment
+                    .borrow_mut()
+                    .assign(&assign.name, value.clone())?;
                 Ok(value)
             }
         }
@@ -259,7 +271,9 @@ impl<'stmt> Interpreter<'stmt> {
             },
             TokenType::Plus => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left + right)),
-                (Value::String(left), Value::String(right)) => Ok(Value::String(format!("{}{}", left, right))),
+                (Value::String(left), Value::String(right)) => {
+                    Ok(Value::String(format!("{}{}", left, right)))
+                }
                 _ => Err(InterpreterError {
                     message: "Operands must be numbers or strings".to_string(),
                 }),
@@ -316,11 +330,11 @@ impl<'stmt> Interpreter<'stmt> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::Parser;
+    use crate::scanner::Scanner;
+    use crate::{stmt::PrintStmt, tokens::Token};
     use std::io;
     use std::io::Write;
-    use crate::{stmt::PrintStmt, tokens::Token};
-    use crate::scanner::Scanner;
-    use crate::parser::Parser;
 
     // Mocking the output stream for testing
     struct VecWriter(Rc<RefCell<Vec<u8>>>);
@@ -337,7 +351,6 @@ mod tests {
     }
 
     fn run(source: String) -> Result<String, InterpreterError> {
-
         let mut scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().clone();
         assert!(!scanner.had_error);
@@ -349,7 +362,11 @@ mod tests {
         let statements = parse_result.unwrap();
 
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
-        let mut interpreter = Interpreter { environment: Rc::new(RefCell::new(Environment::new())), statements: &statements, output: Box::new(VecWriter(Rc::clone(&output))) };
+        let mut interpreter = Interpreter {
+            environment: Rc::new(RefCell::new(Environment::new())),
+            statements: &statements,
+            output: Box::new(VecWriter(Rc::clone(&output))),
+        };
         let result = interpreter.execute();
 
         match result {
@@ -504,19 +521,23 @@ mod tests {
         });
         let statements = vec![print_stmt];
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
-        let mut interpreter = Interpreter { environment: Rc::new(RefCell::new(Environment::new())), statements: &statements, output: Box::new(VecWriter(Rc::clone(&output))) };
+        let mut interpreter = Interpreter {
+            environment: Rc::new(RefCell::new(Environment::new())),
+            statements: &statements,
+            output: Box::new(VecWriter(Rc::clone(&output))),
+        };
         interpreter.execute().unwrap();
         assert_eq!(String::from_utf8_lossy(&output.borrow()), "8\n");
     }
 
     #[test]
     fn test_print_multiple_expressions() {
-
-        let source ="
+        let source = "
         print \"one\";
         print true;
         print 2 + 1;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -528,7 +549,8 @@ mod tests {
         let source = "
         var a;
         print a;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -540,7 +562,8 @@ mod tests {
         let source = "
         var a = 5;
         print a;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -554,7 +577,8 @@ mod tests {
         print a;
         var a = 10;
         print a;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -565,7 +589,8 @@ mod tests {
     fn test_error_undefined_variable() {
         let source = "
         print a;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_err());
@@ -578,7 +603,8 @@ mod tests {
         var a = 5;
         var b = 3;
         print a + b;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -592,7 +618,8 @@ mod tests {
         print a;
         a = 10;
         print a;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -607,7 +634,8 @@ mod tests {
             print a;
         }
         print a;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_err());
@@ -623,7 +651,8 @@ mod tests {
             print a;
         }
         print a;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -639,7 +668,8 @@ mod tests {
             print a + b;
         }
         print a;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -668,7 +698,8 @@ mod tests {
         print a;
         print b;
         print c;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -683,7 +714,8 @@ mod tests {
         } else {
             print \"False\";
         }
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -698,7 +730,8 @@ mod tests {
         } else {
             print \"False\";
         }
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -713,7 +746,8 @@ mod tests {
         } else {
             print \"False\";
         }
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -728,7 +762,8 @@ mod tests {
         } else {
             print \"False\";
         }
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -744,7 +779,8 @@ mod tests {
         print true or true;
         print 0 or 1;
         print 0 or false;
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -759,7 +795,8 @@ mod tests {
             print i;
             i = i + 1;
         }
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());
@@ -772,7 +809,8 @@ mod tests {
         for (var i = 0; i < 5; i = i + 1) {
             print i;
         }
-        ".to_string();
+        "
+        .to_string();
 
         let result = run(source);
         assert!(result.is_ok());

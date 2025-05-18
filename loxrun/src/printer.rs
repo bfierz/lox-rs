@@ -16,14 +16,12 @@ pub fn pretty_print(expr: &Expression) -> String {
             let expr = pretty_print(&*grouping.expression);
             format!("(group {})", expr)
         }
-        Expression::Literal(literal) => {
-            match &literal.value {
-                LiteralTypes::String(s) => format!("{}", s),
-                LiteralTypes::Number(n) => format!("{}", n),
-                LiteralTypes::Bool(b) => format!("{}", b),
-                LiteralTypes::Nil => format!("nil"),
-            }
-        }
+        Expression::Literal(literal) => match &literal.value {
+            LiteralTypes::String(s) => format!("{}", s),
+            LiteralTypes::Number(n) => format!("{}", n),
+            LiteralTypes::Bool(b) => format!("{}", b),
+            LiteralTypes::Nil => format!("nil"),
+        },
         Expression::Logical(logical) => {
             let left = pretty_print(&*logical.left);
             let right = pretty_print(&*logical.right);
@@ -50,17 +48,13 @@ pub fn rpn_print(expr: &Expression) -> String {
             let right = rpn_print(&*binary.right);
             format!("{} {} {}", left, right, binary.operator.lexeme)
         }
-        Expression::Grouping(grouping) => {
-            rpn_print(&*grouping.expression)
-        }
-        Expression::Literal(literal) => {
-            match &literal.value {
-                LiteralTypes::String(s) => format!("{}", s),
-                LiteralTypes::Number(n) => format!("{}", n),
-                LiteralTypes::Bool(b) => format!("{}", b),
-                LiteralTypes::Nil => format!("nil"),
-            }
-        }
+        Expression::Grouping(grouping) => rpn_print(&*grouping.expression),
+        Expression::Literal(literal) => match &literal.value {
+            LiteralTypes::String(s) => format!("{}", s),
+            LiteralTypes::Number(n) => format!("{}", n),
+            LiteralTypes::Bool(b) => format!("{}", b),
+            LiteralTypes::Nil => format!("nil"),
+        },
         Expression::Logical(logical) => {
             let left = rpn_print(&*logical.left);
             let right = rpn_print(&*logical.right);
@@ -94,7 +88,7 @@ mod tests {
             right: Box::new(Expression::Grouping(Grouping {
                 expression: Box::new(Expression::Literal(Literal {
                     value: LiteralTypes::Number(45.67),
-                }))
+                })),
             })),
         });
 
