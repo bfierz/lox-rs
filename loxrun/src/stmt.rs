@@ -1,8 +1,9 @@
 use crate::{expression::Expression, tokens::Token};
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     Expression(ExpressionStmt),
+    Function(FunctionStmt),
     If(IfStmt),
     Print(PrintStmt),
     Block(BlockStmt),
@@ -10,35 +11,42 @@ pub enum Stmt {
     While(WhileStmt),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExpressionStmt {
     pub expression: Box<Expression>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionStmt {
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub body: Box<Stmt>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct IfStmt {
     pub condition: Box<Expression>,
     pub then_branch: Box<Stmt>,
     pub else_branch: Option<Box<Stmt>>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrintStmt {
     pub expression: Box<Expression>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockStmt {
     pub statements: Vec<Stmt>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VarStmt {
     pub name: Token,
     pub initializer: Option<Box<Expression>>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WhileStmt {
     pub condition: Box<Expression>,
     pub body: Box<Stmt>,

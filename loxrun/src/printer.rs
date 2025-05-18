@@ -12,6 +12,11 @@ pub fn pretty_print(expr: &Expression) -> String {
             let right = pretty_print(&*binary.right);
             format!("({} {} {})", binary.operator.lexeme, left, right)
         }
+        Expression::Call(call) => {
+            let callee = pretty_print(&*call.callee);
+            let args: Vec<String> = call.arguments.iter().map(|arg| pretty_print(arg)).collect();
+            format!("{}({})", callee, args.join(", "))
+        }
         Expression::Grouping(grouping) => {
             let expr = pretty_print(&*grouping.expression);
             format!("(group {})", expr)
@@ -47,6 +52,11 @@ pub fn rpn_print(expr: &Expression) -> String {
             let left = rpn_print(&*binary.left);
             let right = rpn_print(&*binary.right);
             format!("{} {} {}", left, right, binary.operator.lexeme)
+        }
+        Expression::Call(call) => {
+            let callee = rpn_print(&*call.callee);
+            let args: Vec<String> = call.arguments.iter().map(|arg| rpn_print(arg)).collect();
+            format!("{}({})", callee, args.join(", "))
         }
         Expression::Grouping(grouping) => rpn_print(&*grouping.expression),
         Expression::Literal(literal) => match &literal.value {

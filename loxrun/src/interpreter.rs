@@ -1,4 +1,5 @@
-use crate::expression::{Binary, Expression, Grouping, Literal, Logical, Unary};
+use crate::callable::Callable;
+use crate::expression::{Binary, Call, Expression, Grouping, Literal, Logical, Unary};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
 use std::cell::RefCell;
@@ -12,6 +13,7 @@ pub struct InterpreterError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    Callable(Callable),
     Number(f64),
     String(String),
     Bool(bool),
@@ -34,6 +36,7 @@ impl Value {
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Value::Callable(_) => write!(f, "<function>"),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
@@ -125,6 +128,11 @@ impl<'stmt> Interpreter<'stmt> {
             Stmt::Expression(expr_stmt) => {
                 self.expression(&*expr_stmt.expression)?;
             }
+            Stmt::Function(fun_stmt) => {
+                return Err(InterpreterError {
+                    message: format!("Function {} is not implemented yet", fun_stmt.name.lexeme),
+                });
+            }
             Stmt::If(if_stmt) => {
                 let condition = self.expression(&*if_stmt.condition)?;
                 if condition.is_true() {
@@ -176,6 +184,7 @@ impl<'stmt> Interpreter<'stmt> {
     fn expression(&mut self, expression: &Expression) -> Result<Value, InterpreterError> {
         match expression {
             Expression::Binary(binary) => self.binary(binary),
+            Expression::Call(call) => self.call(call),
             Expression::Grouping(grouping) => self.grouping(grouping),
             Expression::Literal(literal) => self.literal(literal),
             Expression::Logical(logical) => self.logical(logical),
@@ -194,6 +203,13 @@ impl<'stmt> Interpreter<'stmt> {
                 Ok(value)
             }
         }
+    }
+
+    fn call(&mut self, call: &Call) -> Result<Value, InterpreterError> {
+        let callee = self.expression(&*call.callee)?;
+        Err(InterpreterError {
+            message: "Function 'call' is not implemented yet".to_string(),
+        })
     }
 
     fn grouping(&mut self, grouping: &Grouping) -> Result<Value, InterpreterError> {

@@ -1,13 +1,16 @@
 use crate::{
-    expression::{Assign, Binary, Expression, Grouping, Literal, Logical, Unary, Variable},
-    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt},
+    expression::{Assign, Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable},
+    stmt::{BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt},
     tokens::{LiteralTypes, Token, TokenType},
 };
 
 // Production rules
 // program -> statement* EOF ;
 
-// declaration -> varDecl | statement ;
+// declaration -> funDecl | varDecl | statement ;
+// funDecls -> "fun" function ;
+// function -> IDENTIFIER "(" parameters? ")" block ;
+// parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
 // varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
 // statement -> exprStmt | forStmt | ifStmt | printStmt | whileStmt | block ;
 // exprStmt -> expression ";" ;
@@ -25,8 +28,10 @@ use crate::{
 // comparison -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 // term -> factor ( ( "-" | "+" ) factor )* ;
 // factor -> unary ( ( "/" | "*" ) unary )* ;
-// unary -> ( "!" | "-" ) unary | primary ;
+// unary -> ( "!" | "-" ) unary | call ;
+// call -> primary ( "(" arguments? ")" )* ;
 // primary -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER ;
+// arguments -> expression ( "," expression )* ;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -81,11 +86,41 @@ impl Parser {
     }
 
     pub fn declaration(&mut self) -> Result<Stmt, ParserError> {
-        if self.match_token(&[TokenType::Var]) {
+        if self.match_token(&[TokenType::Fun]) {
+            self.fun_declaration()
+        } else if self.match_token(&[TokenType::Var]) {
             self.var_declaration()
         } else {
             self.statement()
         }
+    }
+
+    pub fn fun_declaration(&mut self) -> Result<Stmt, ParserError> {
+        let name = self.consume(TokenType::Identifier, "Expect function name.")?;
+        self.consume(TokenType::LeftParen, "Expect '(' after function name.")?;
+
+        let mut params = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                if params.len() >= 255 {
+                    return Err(ParserError {
+                        message: "Can't have more than 255 parameters.".to_string(),
+                    });
+                }
+                params.push(self.consume(TokenType::Identifier, "Expect parameter name.")?);
+                if !self.match_token(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
+        self.consume(TokenType::LeftBrace, "Expect '{' before function body.")?;
+        let body = self.block()?;
+        Ok(Stmt::Function(FunctionStmt {
+            name,
+            params,
+            body: Box::new(body),
+        }))
     }
 
     pub fn var_declaration(&mut self) -> Result<Stmt, ParserError> {
@@ -368,8 +403,45 @@ impl Parser {
                 right: Box::new(right),
             }))
         } else {
-            self.primary()
+            self.call()
         }
+    }
+
+    pub fn call(&mut self) -> Result<Expression, ParserError> {
+        let mut expr = self.primary()?;
+
+        loop {
+            if self.match_token(&[TokenType::LeftParen]) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+
+    pub fn finish_call(&mut self, callee: Expression) -> Result<Expression, ParserError> {
+        let mut arguments = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                if arguments.len() >= 255 {
+                    return Err(ParserError {
+                        message: "Can't have more than 255 arguments.".to_string(),
+                    });
+                }
+                arguments.push(self.expression()?);
+                if !self.match_token(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+        let paren = self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
+        Ok(Expression::Call(Call {
+            callee: Box::new(callee),
+            paren,
+            arguments,
+        }))
     }
 
     pub fn primary(&mut self) -> Result<Expression, ParserError> {
