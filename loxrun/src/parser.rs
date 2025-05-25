@@ -115,11 +115,18 @@ impl Parser {
         }
         self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.")?;
-        let body = self.block()?;
+        let body = match self.block()? {
+            Stmt::Block(block) => block,
+            _ => {
+                return Err(ParserError {
+                    message: "Expected block after function declaration.".to_string(),
+                })
+            }
+        };
         Ok(Stmt::Function(FunctionStmt {
             name,
             params,
-            body: Box::new(body),
+            body: body.statements,
         }))
     }
 

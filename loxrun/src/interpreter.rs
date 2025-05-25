@@ -1,4 +1,4 @@
-use crate::callable::Callable;
+use crate::callable::{Callable, LoxCallable, LoxFunction};
 use crate::expression::{Binary, Call, Expression, Grouping, Literal, Logical, Unary};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
@@ -67,6 +67,16 @@ impl Environment {
         }
     }
 
+    pub fn deep_clone(&self) -> Self {
+        Self {
+            values: self.values.clone(),
+            enclosing: self
+                .enclosing
+                .as_ref()
+                .map(|env| std::rc::Rc::new(std::cell::RefCell::new(env.borrow().deep_clone()))),
+        }
+    }
+
     pub fn define(&mut self, name: String, value: Value) {
         self.values.insert(name, value);
     }
@@ -98,6 +108,8 @@ impl Environment {
 }
 
 pub struct Interpreter<'stmt> {
+    // Global environment for variable storage
+    pub globals: Rc<RefCell<Environment>>,
     // Environment for variable storage
     pub environment: Rc<RefCell<Environment>>,
     // Statements to be executed
@@ -108,9 +120,14 @@ pub struct Interpreter<'stmt> {
 
 impl<'stmt> Interpreter<'stmt> {
     pub fn new(statements: &'stmt Vec<Stmt>) -> Self {
-        let env = Rc::new(RefCell::new(Environment::new()));
+        let globals = Rc::new(RefCell::new(Environment::new()));
+        //globals.borrow_mut().define(
+        //    "clock".to_string(),
+        //    Value::Callable(LoxBuiltinFunctionClock::new()),
+        //);
         Interpreter {
-            environment: env,
+            globals: Rc::clone(&globals),
+            environment: globals,
             statements,
             output: Box::new(std::io::stdout()),
         }
@@ -129,9 +146,11 @@ impl<'stmt> Interpreter<'stmt> {
                 self.expression(&*expr_stmt.expression)?;
             }
             Stmt::Function(fun_stmt) => {
-                return Err(InterpreterError {
-                    message: format!("Function {} is not implemented yet", fun_stmt.name.lexeme),
-                });
+                LoxFunction::new(fun_stmt.clone());
+                self.environment.borrow_mut().define(
+                    fun_stmt.name.lexeme.clone(),
+                    Value::Callable(Callable::Function(LoxFunction::new(fun_stmt.clone()))),
+                );
             }
             Stmt::If(if_stmt) => {
                 let condition = self.expression(&*if_stmt.condition)?;
@@ -146,7 +165,7 @@ impl<'stmt> Interpreter<'stmt> {
                 writeln!(self.output, "{}", value);
             }
             Stmt::Block(block_stmt) => {
-                self.execute_block(&block_stmt.statements)?;
+                self.execute_block(&block_stmt.statements, self.environment.clone())?;
             }
             Stmt::Var(var_stmt) => {
                 if let Some(initializer) = &var_stmt.initializer {
@@ -169,9 +188,13 @@ impl<'stmt> Interpreter<'stmt> {
         Ok(())
     }
 
-    fn execute_block(&mut self, statements: &Vec<Stmt>) -> Result<(), InterpreterError> {
+    pub fn execute_block(
+        &mut self,
+        statements: &Vec<Stmt>,
+        environment: Rc<RefCell<Environment>>,
+    ) -> Result<(), InterpreterError> {
         let previous = Rc::clone(&self.environment);
-        let new_environment = Environment::with_enclosing(previous.clone());
+        let new_environment = Environment::with_enclosing(environment);
         self.environment = Rc::new(RefCell::new(new_environment));
 
         for statement in statements {
@@ -207,9 +230,33 @@ impl<'stmt> Interpreter<'stmt> {
 
     fn call(&mut self, call: &Call) -> Result<Value, InterpreterError> {
         let callee = self.expression(&*call.callee)?;
-        Err(InterpreterError {
-            message: "Function 'call' is not implemented yet".to_string(),
-        })
+        if let Value::Callable(callable) = &callee {
+            if let Callable::Function(func) = callable {
+                let mut arguments = Vec::new();
+                for arg in &call.arguments {
+                    arguments.push(self.expression(arg)?);
+                }
+                if arguments.len() != func.arity() {
+                    return Err(InterpreterError {
+                        message: format!(
+                            "Expected {} arguments but got {}",
+                            func.arity(),
+                            arguments.len()
+                        ),
+                    });
+                }
+                func.call(self, arguments);
+                Ok(Value::Nil)
+            } else {
+                return Err(InterpreterError {
+                    message: "Can only call functions".to_string(),
+                });
+            }
+        } else {
+            return Err(InterpreterError {
+                message: "Can only call functions".to_string(),
+            });
+        }
     }
 
     fn grouping(&mut self, grouping: &Grouping) -> Result<Value, InterpreterError> {
@@ -230,7 +277,7 @@ impl<'stmt> Interpreter<'stmt> {
         self.expression(&*logical.right)
     }
 
-    fn literal(&self, literal: &Literal) -> Result<Value, InterpreterError> {
+    pub fn literal(&self, literal: &Literal) -> Result<Value, InterpreterError> {
         match &literal.value {
             LiteralTypes::String(value) => Ok(Value::String(value.clone())),
             LiteralTypes::Number(value) => Ok(Value::Number(*value)),
@@ -378,8 +425,10 @@ mod tests {
         let statements = parse_result.unwrap();
 
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let globals = Rc::new(RefCell::new(Environment::new()));
         let mut interpreter = Interpreter {
-            environment: Rc::new(RefCell::new(Environment::new())),
+            globals: Rc::clone(&globals),
+            environment: globals,
             statements: &statements,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
@@ -537,8 +586,10 @@ mod tests {
         });
         let statements = vec![print_stmt];
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let globals = Rc::new(RefCell::new(Environment::new()));
         let mut interpreter = Interpreter {
-            environment: Rc::new(RefCell::new(Environment::new())),
+            globals: Rc::clone(&globals),
+            environment: globals,
             statements: &statements,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
@@ -831,5 +882,35 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "0\n1\n2\n3\n4\n");
+    }
+
+    #[test]
+    fn test_function_definition_and_call() {
+        let source = "
+        fun greet() {
+            print \"Hello, World!\";
+        }
+        greet();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Hello, World!\n");
+    }
+
+    #[test]
+    fn test_function_definition_and_call_with_param() {
+        let source = "
+        fun greet(name) {
+            print \"Hello, \" + name + \"!\";
+        }
+        greet(\"World\");
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Hello, World!\n");
     }
 }

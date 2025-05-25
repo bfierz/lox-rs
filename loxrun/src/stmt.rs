@@ -20,7 +20,7 @@ pub struct ExpressionStmt {
 pub struct FunctionStmt {
     pub name: Token,
     pub params: Vec<Token>,
-    pub body: Box<Stmt>,
+    pub body: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
