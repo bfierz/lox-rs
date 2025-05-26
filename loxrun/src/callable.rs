@@ -1,7 +1,5 @@
-use crate::expression::Literal;
-use crate::interpreter::{Interpreter, InterpreterError, Value};
+use crate::interpreter::{Interpreter, InterpreterError, InterpreterResult, Value};
 use crate::stmt::FunctionStmt;
-use crate::tokens::LiteralTypes;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Callable {
@@ -50,8 +48,12 @@ impl LoxCallable for LoxFunction {
                 .borrow_mut()
                 .define(self.declaration.params[i].lexeme.clone(), arg.clone());
         }
-        interpreter.execute_block(&self.declaration.body, fun_env);
-        Ok(Value::Nil)
+        let result = interpreter.execute_block(&self.declaration.body, fun_env);
+        match result {
+            Ok(InterpreterResult::Return(value)) => Ok(value),
+            Ok(InterpreterResult::None) => Ok(Value::Nil),
+            Err(err) => Err(err),
+        }
     }
 
     fn to_string(&self) -> String {

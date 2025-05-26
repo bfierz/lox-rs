@@ -7,6 +7,7 @@ pub enum Stmt {
     If(IfStmt),
     Print(PrintStmt),
     Block(BlockStmt),
+    Return(ReturnStmt),
     Var(VarStmt),
     While(WhileStmt),
 }
@@ -38,6 +39,12 @@ pub struct PrintStmt {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStmt {
     pub statements: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnStmt {
+    pub keyword: Token,
+    pub value: Option<Box<Expression>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

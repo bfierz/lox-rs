@@ -1,6 +1,9 @@
 use crate::{
     expression::{Assign, Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable},
-    stmt::{BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt},
+    stmt::{
+        BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt, VarStmt,
+        WhileStmt,
+    },
     tokens::{LiteralTypes, Token, TokenType},
 };
 
@@ -12,11 +15,12 @@ use crate::{
 // function -> IDENTIFIER "(" parameters? ")" block ;
 // parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
 // varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
-// statement -> exprStmt | forStmt | ifStmt | printStmt | whileStmt | block ;
+// statement -> exprStmt | forStmt | ifStmt | printStmt | returnStm | whileStmt | block ;
 // exprStmt -> expression ";" ;
 // forStmt -> "for" "(" (varDecl | exprStmt | ";") expression? ";" expression? ")" statement ;
 // ifStmt -> "if" "(" expression ")" statement ( "else" statement )? ;
 // printStmt -> "print" expression ";" ;
+// returnStmt -> "return" expression? ";" ;
 // whileStmt -> "while" "(" expression ")" statement ;
 // block -> "{" declaration* "}" ;
 
@@ -151,6 +155,8 @@ impl Parser {
             self.if_statement()
         } else if self.match_token(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.match_token(&[TokenType::Return]) {
+            self.return_statement()
         } else if self.match_token(&[TokenType::While]) {
             self.while_statement()
         } else if self.match_token(&[TokenType::LeftBrace]) {
@@ -237,6 +243,17 @@ impl Parser {
         Ok(Stmt::Print(PrintStmt {
             expression: Box::new(value),
         }))
+    }
+
+    pub fn return_statement(&mut self) -> Result<Stmt, ParserError> {
+        let keyword = self.previous().clone();
+        let value = if !self.check(&TokenType::Semicolon) {
+            Some(Box::new(self.expression()?))
+        } else {
+            None
+        };
+        self.consume(TokenType::Semicolon, "Expect ';' after return value.")?;
+        Ok(Stmt::Return(ReturnStmt { keyword, value }))
     }
 
     pub fn while_statement(&mut self) -> Result<Stmt, ParserError> {

@@ -45,6 +45,11 @@ impl std::fmt::Display for Value {
     }
 }
 
+pub enum InterpreterResult {
+    None,
+    Return(Value),
+}
+
 pub struct Environment {
     // Parent environment for nested scopes
     enclosing: Option<Rc<RefCell<Environment>>>,
@@ -81,10 +86,14 @@ impl Environment {
         self.values.insert(name, value);
     }
 
-    pub fn assign(&mut self, name: &Token, value: Value) -> Result<(), InterpreterError> {
+    pub fn assign(
+        &mut self,
+        name: &Token,
+        value: Value,
+    ) -> Result<InterpreterResult, InterpreterError> {
         if self.values.contains_key(name.lexeme.as_str()) {
             self.values.insert(name.lexeme.clone(), value);
-            return Ok(());
+            return Ok(InterpreterResult::None);
         }
         match &self.enclosing {
             Some(enclosing) => enclosing.borrow_mut().assign(name, value),
@@ -133,14 +142,17 @@ impl<'stmt> Interpreter<'stmt> {
         }
     }
 
-    pub fn execute(&mut self) -> Result<(), InterpreterError> {
+    pub fn execute(&mut self) -> Result<InterpreterResult, InterpreterError> {
         for statement in self.statements {
             self.execute_statement(statement)?;
         }
-        Ok(())
+        Ok(InterpreterResult::None)
     }
 
-    fn execute_statement(&mut self, statement: &Stmt) -> Result<(), InterpreterError> {
+    fn execute_statement(
+        &mut self,
+        statement: &Stmt,
+    ) -> Result<InterpreterResult, InterpreterError> {
         match statement {
             Stmt::Expression(expr_stmt) => {
                 self.expression(&*expr_stmt.expression)?;
@@ -152,12 +164,20 @@ impl<'stmt> Interpreter<'stmt> {
                     Value::Callable(Callable::Function(LoxFunction::new(fun_stmt.clone()))),
                 );
             }
+            Stmt::Return(return_stmt) => {
+                if let Some(value) = &return_stmt.value {
+                    let return_value = self.expression(&*value)?;
+                    return Ok(InterpreterResult::Return(return_value));
+                } else {
+                    return Ok(InterpreterResult::Return(Value::Nil));
+                }
+            }
             Stmt::If(if_stmt) => {
                 let condition = self.expression(&*if_stmt.condition)?;
                 if condition.is_true() {
-                    self.execute_statement(&*if_stmt.then_branch)?;
+                    return self.execute_statement(&*if_stmt.then_branch);
                 } else if let Some(else_branch) = &if_stmt.else_branch {
-                    self.execute_statement(else_branch)?;
+                    return self.execute_statement(else_branch);
                 }
             }
             Stmt::Print(print_stmt) => {
@@ -165,7 +185,7 @@ impl<'stmt> Interpreter<'stmt> {
                 writeln!(self.output, "{}", value);
             }
             Stmt::Block(block_stmt) => {
-                self.execute_block(&block_stmt.statements, self.environment.clone())?;
+                return self.execute_block(&block_stmt.statements, self.environment.clone());
             }
             Stmt::Var(var_stmt) => {
                 if let Some(initializer) = &var_stmt.initializer {
@@ -181,27 +201,35 @@ impl<'stmt> Interpreter<'stmt> {
             }
             Stmt::While(while_stmt) => {
                 while self.expression(&*while_stmt.condition)?.is_true() {
-                    self.execute_statement(&*while_stmt.body)?;
+                    if let Ok(InterpreterResult::Return(value)) =
+                        self.execute_statement(&*while_stmt.body)
+                    {
+                        return Ok(InterpreterResult::Return(value));
+                    }
                 }
             }
         }
-        Ok(())
+        Ok(InterpreterResult::None)
     }
 
     pub fn execute_block(
         &mut self,
         statements: &Vec<Stmt>,
         environment: Rc<RefCell<Environment>>,
-    ) -> Result<(), InterpreterError> {
+    ) -> Result<InterpreterResult, InterpreterError> {
         let previous = Rc::clone(&self.environment);
         let new_environment = Environment::with_enclosing(environment);
         self.environment = Rc::new(RefCell::new(new_environment));
 
+        let mut result = InterpreterResult::None;
         for statement in statements {
-            self.execute_statement(statement)?;
+            if let Ok(InterpreterResult::Return(value)) = self.execute_statement(statement) {
+                result = InterpreterResult::Return(value);
+                break;
+            }
         }
         self.environment = previous;
-        Ok(())
+        Ok(result)
     }
 
     fn expression(&mut self, expression: &Expression) -> Result<Value, InterpreterError> {
@@ -245,8 +273,7 @@ impl<'stmt> Interpreter<'stmt> {
                         ),
                     });
                 }
-                func.call(self, arguments);
-                Ok(Value::Nil)
+                func.call(self, arguments)
             } else {
                 return Err(InterpreterError {
                     message: "Can only call functions".to_string(),
@@ -912,5 +939,69 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Hello, World!\n");
+    }
+
+    #[test]
+    fn test_function_definition_and_call_with_return() {
+        let source = "
+        fun greet() {
+            return \"Hello, World!\";
+        }
+        print greet();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Hello, World!\n");
+    }
+
+    #[test]
+    fn test_function_definition_and_call_with_multiple_params() {
+        let source = "
+        fun add(a, b) {
+            return a + b;
+        }
+        print add(5, 3);
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "8\n");
+    }
+
+    #[test]
+    fn test_recursion() {
+        let source = "
+        fun factorial(n) {
+            if (n == 0) {
+                return 1;
+            }
+            return n * factorial(n - 1);
+        }
+        print factorial(5);
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "120\n");
+    }
+
+    #[test]
+    fn test_fibonacci() {
+        let source = "
+        fun fib(n) {
+            if (n <= 1) return n;
+            return fib(n - 2) + fib(n - 1);
+        }
+        print fib(8);
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "21\n");
     }
 }
