@@ -1,5 +1,7 @@
-use crate::interpreter::{Interpreter, InterpreterError, InterpreterResult, Value};
+use crate::interpreter::{Environment, Interpreter, InterpreterError, InterpreterResult, Value};
 use crate::stmt::FunctionStmt;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Callable {
@@ -37,10 +39,9 @@ impl LoxCallable for LoxFunction {
         interpreter: &mut Interpreter,
         arguments: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
-        // Create a deep copy of the global environment interpreter.globals
-        let fun_env = std::rc::Rc::new(std::cell::RefCell::new(
-            interpreter.globals.borrow().deep_clone(),
-        ));
+        let fun_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            interpreter.globals.clone(),
+        )));
 
         // Add the function's parameters to the new environment
         for (i, arg) in arguments.iter().enumerate() {
