@@ -50,6 +50,7 @@ pub enum InterpreterResult {
     Return(Value),
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Environment {
     // Parent environment for nested scopes
     enclosing: Option<Rc<RefCell<Environment>>>,
@@ -158,10 +159,12 @@ impl<'stmt> Interpreter<'stmt> {
                 self.expression(&*expr_stmt.expression)?;
             }
             Stmt::Function(fun_stmt) => {
-                LoxFunction::new(fun_stmt.clone());
                 self.environment.borrow_mut().define(
                     fun_stmt.name.lexeme.clone(),
-                    Value::Callable(Callable::Function(LoxFunction::new(fun_stmt.clone()))),
+                    Value::Callable(Callable::Function(LoxFunction::new(
+                        fun_stmt.clone(),
+                        self.environment.clone(),
+                    ))),
                 );
             }
             Stmt::Return(return_stmt) => {
@@ -1003,5 +1006,27 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "21\n");
+    }
+
+    #[test]
+    fn test_function_object_with_closure() {
+        let source = "
+        fun makeCounter() {
+            var i = 0;
+            fun count() {
+                i = i + 1;
+                return i;
+            }
+            return count;
+        }
+        var counter = makeCounter();
+        print counter();
+        print counter();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "1\n2\n");
     }
 }

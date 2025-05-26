@@ -21,11 +21,15 @@ pub trait LoxCallable {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoxFunction {
     pub declaration: Box<FunctionStmt>,
+
+    /// The closure is an optional environment that captures the variables from the scope where the function was defined.
+    pub closure: Rc<RefCell<Environment>>,
 }
 impl LoxFunction {
-    pub fn new(declaration: FunctionStmt) -> Self {
+    pub fn new(declaration: FunctionStmt, closure: Rc<RefCell<Environment>>) -> Self {
         Self {
             declaration: Box::new(declaration),
+            closure: closure,
         }
     }
 }
@@ -40,7 +44,7 @@ impl LoxCallable for LoxFunction {
         arguments: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
         let fun_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            interpreter.globals.clone(),
+            self.closure.clone(),
         )));
 
         // Add the function's parameters to the new environment
