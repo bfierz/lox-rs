@@ -117,19 +117,17 @@ impl Environment {
     }
 }
 
-pub struct Interpreter<'stmt> {
+pub struct Interpreter {
     // Global environment for variable storage
     pub globals: Rc<RefCell<Environment>>,
     // Environment for variable storage
     pub environment: Rc<RefCell<Environment>>,
-    // Statements to be executed
-    pub statements: &'stmt Vec<Stmt>,
     // Dedicated output stream for the interpreter
     pub output: Box<dyn Write>,
 }
 
-impl<'stmt> Interpreter<'stmt> {
-    pub fn new(statements: &'stmt Vec<Stmt>) -> Self {
+impl Interpreter {
+    pub fn new() -> Self {
         let globals = Rc::new(RefCell::new(Environment::new()));
         //globals.borrow_mut().define(
         //    "clock".to_string(),
@@ -138,13 +136,15 @@ impl<'stmt> Interpreter<'stmt> {
         Interpreter {
             globals: Rc::clone(&globals),
             environment: globals,
-            statements,
             output: Box::new(std::io::stdout()),
         }
     }
 
-    pub fn execute(&mut self) -> Result<InterpreterResult, InterpreterError> {
-        for statement in self.statements {
+    pub fn execute(
+        &mut self,
+        statements: &Vec<Stmt>,
+    ) -> Result<InterpreterResult, InterpreterError> {
+        for statement in statements {
             self.execute_statement(statement)?;
         }
         Ok(InterpreterResult::None)
@@ -459,10 +459,9 @@ mod tests {
         let mut interpreter = Interpreter {
             globals: Rc::clone(&globals),
             environment: globals,
-            statements: &statements,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
-        let result = interpreter.execute();
+        let result = interpreter.execute(&statements);
 
         match result {
             Ok(_) => Ok(String::from_utf8_lossy(&output.borrow()).to_string()),
@@ -487,8 +486,7 @@ mod tests {
             })),
         });
 
-        let statements: Vec<Stmt> = vec![];
-        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter = Interpreter::new();
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(8.0));
     }
@@ -510,8 +508,7 @@ mod tests {
             })),
         });
 
-        let statements: Vec<Stmt> = vec![];
-        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter = Interpreter::new();
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(2.0));
     }
@@ -533,8 +530,7 @@ mod tests {
             })),
         });
 
-        let statements: Vec<Stmt> = vec![];
-        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter = Interpreter::new();
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(15.0));
     }
@@ -555,8 +551,7 @@ mod tests {
             })),
         });
 
-        let statements: Vec<Stmt> = vec![];
-        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter = Interpreter::new();
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(2.0));
     }
@@ -588,8 +583,7 @@ mod tests {
             })),
         });
 
-        let statements: Vec<Stmt> = vec![];
-        let mut interpreter: Interpreter<'_> = Interpreter::new(&statements);
+        let mut interpreter = Interpreter::new();
         let result = interpreter.expression(&expression).unwrap();
         assert_eq!(result, Value::Number(17.0));
     }
@@ -620,10 +614,9 @@ mod tests {
         let mut interpreter = Interpreter {
             globals: Rc::clone(&globals),
             environment: globals,
-            statements: &statements,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
-        interpreter.execute().unwrap();
+        interpreter.execute(&statements).unwrap();
         assert_eq!(String::from_utf8_lossy(&output.borrow()), "8\n");
     }
 
