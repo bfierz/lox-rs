@@ -47,6 +47,8 @@ impl std::fmt::Display for Value {
 
 pub enum InterpreterResult {
     None,
+    Break,
+    Continue,
     Return(Value),
 }
 
@@ -145,7 +147,13 @@ impl Interpreter {
         statements: &Vec<Stmt>,
     ) -> Result<InterpreterResult, InterpreterError> {
         for statement in statements {
-            self.execute_statement(statement)?;
+            if let InterpreterResult::Break | InterpreterResult::Continue =
+                self.execute_statement(statement)?
+            {
+                return Err(InterpreterError {
+                    message: "'break' or 'continue' statement outside of loop".to_string(),
+                });
+            }
         }
         Ok(InterpreterResult::None)
     }
@@ -174,6 +182,12 @@ impl Interpreter {
                 } else {
                     return Ok(InterpreterResult::Return(Value::Nil));
                 }
+            }
+            Stmt::Break(_) => {
+                return Ok(InterpreterResult::Break);
+            }
+            Stmt::Continue(_) => {
+                return Ok(InterpreterResult::Continue);
             }
             Stmt::If(if_stmt) => {
                 let condition = self.expression(&*if_stmt.condition)?;
@@ -204,10 +218,14 @@ impl Interpreter {
             }
             Stmt::While(while_stmt) => {
                 while self.expression(&*while_stmt.condition)?.is_true() {
-                    if let Ok(InterpreterResult::Return(value)) =
-                        self.execute_statement(&*while_stmt.body)
-                    {
-                        return Ok(InterpreterResult::Return(value));
+                    match self.execute_statement(&*while_stmt.body) {
+                        Ok(InterpreterResult::Break) => break,
+                        Ok(InterpreterResult::Continue) => continue,
+                        Ok(InterpreterResult::Return(value)) => {
+                            return Ok(InterpreterResult::Return(value));
+                        }
+                        Err(err) => return Err(err),
+                        _ => {}
                     }
                 }
             }
@@ -226,9 +244,26 @@ impl Interpreter {
 
         let mut result = InterpreterResult::None;
         for statement in statements {
-            if let Ok(InterpreterResult::Return(value)) = self.execute_statement(statement) {
-                result = InterpreterResult::Return(value);
-                break;
+            match self.execute_statement(statement) {
+                Ok(InterpreterResult::None) => {
+                    // Continue to the next statement
+                }
+                Ok(InterpreterResult::Return(value)) => {
+                    result = InterpreterResult::Return(value);
+                    break;
+                }
+                Ok(InterpreterResult::Break) => {
+                    result = InterpreterResult::Break;
+                    break;
+                }
+                Ok(InterpreterResult::Continue) => {
+                    result = InterpreterResult::Continue;
+                    break;
+                }
+                Err(err) => {
+                    self.environment = previous;
+                    return Err(err);
+                }
             }
         }
         self.environment = previous;
@@ -894,6 +929,40 @@ mod tests {
     }
 
     #[test]
+    fn test_while_statement_with_break() {
+        let source = "
+        var i = 0;
+        while (i < 10) {
+            if (i == 5) break;
+            print i;
+            i = i + 1;
+        }
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "0\n1\n2\n3\n4\n");
+    }
+
+    #[test]
+    fn test_while_statement_with_continue() {
+        let source = "
+        var i = 0;
+        while (i < 5) {
+            i = i + 1;
+            if (i == 3) continue;
+            print i;
+        }
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "1\n2\n4\n5\n");
+    }
+
+    #[test]
     fn test_for_statement() {
         let source = "
         for (var i = 0; i < 5; i = i + 1) {
@@ -905,6 +974,51 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "0\n1\n2\n3\n4\n");
+    }
+
+    #[test]
+    fn test_for_statement_with_break() {
+        let source = "
+        for (var i = 0; i < 10; i = i + 1) {
+            if (i == 5) break;
+            print i;
+        }
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "0\n1\n2\n3\n4\n");
+    }
+
+    #[test]
+    fn test_for_statement_with_continue() {
+        let source = "
+        for (var i = 0; i < 5; i = i + 1) {
+            if (i == 2) continue;
+            print i;
+        }
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "0\n1\n3\n4\n");
+    }
+
+    #[test]
+    fn test_break_without_loop() {
+        let source = "
+        break;
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().message,
+            "'break' or 'continue' statement outside of loop"
+        );
     }
 
     #[test]

@@ -2,11 +2,13 @@ use crate::{expression::Expression, tokens::Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
+    Block(BlockStmt),
+    Break(BreakStmt),
+    Continue(ContinueStmt),
     Expression(ExpressionStmt),
     Function(FunctionStmt),
     If(IfStmt),
     Print(PrintStmt),
-    Block(BlockStmt),
     Return(ReturnStmt),
     Var(VarStmt),
     While(WhileStmt),
@@ -45,6 +47,16 @@ pub struct BlockStmt {
 pub struct ReturnStmt {
     pub keyword: Token,
     pub value: Option<Box<Expression>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BreakStmt {
+    pub keyword: Token,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContinueStmt {
+    pub keyword: Token,
 }
 
 #[derive(Debug, Clone, PartialEq)]
