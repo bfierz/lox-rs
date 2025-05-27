@@ -92,8 +92,14 @@ impl LoxCallable for LoxFunction {
         }
         let result = interpreter.execute_block(&self.declaration.body, fun_env);
         match result {
-            Ok(InterpreterResult::Return(value)) => Ok(value),
             Ok(InterpreterResult::None) => Ok(Value::Nil),
+            Ok(InterpreterResult::Return(value)) => Ok(value),
+            Ok(InterpreterResult::Break) => Err(InterpreterError {
+                message: "'break' is not a valid return statement".to_string(),
+            }),
+            Ok(InterpreterResult::Continue) => Err(InterpreterError {
+                message: "'continue' is not a valid return statement".to_string(),
+            }),
             Err(err) => Err(err),
         }
     }

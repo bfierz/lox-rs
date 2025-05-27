@@ -1,8 +1,8 @@
 use crate::{
     expression::{Assign, Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable},
     stmt::{
-        BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt, VarStmt,
-        WhileStmt,
+        BlockStmt, BreakStmt, ContinueStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt,
+        ReturnStmt, Stmt, VarStmt, WhileStmt,
     },
     tokens::{LiteralTypes, Token, TokenType},
 };
@@ -15,12 +15,14 @@ use crate::{
 // function -> IDENTIFIER "(" parameters? ")" block ;
 // parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
 // varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
-// statement -> exprStmt | forStmt | ifStmt | printStmt | returnStm | whileStmt | block ;
+// statement -> exprStmt | forStmt | ifStmt | printStmt | returnStmt | breakStmt | continueStmt | whileStmt | block ;
 // exprStmt -> expression ";" ;
 // forStmt -> "for" "(" (varDecl | exprStmt | ";") expression? ";" expression? ")" statement ;
 // ifStmt -> "if" "(" expression ")" statement ( "else" statement )? ;
 // printStmt -> "print" expression ";" ;
 // returnStmt -> "return" expression? ";" ;
+// breakStmt -> "break" ";" ;
+// continueStmt -> "continue" ";" ;
 // whileStmt -> "while" "(" expression ")" statement ;
 // block -> "{" declaration* "}" ;
 
@@ -169,6 +171,10 @@ impl Parser {
             self.print_statement()
         } else if self.match_token(&[TokenType::Return]) {
             self.return_statement()
+        } else if self.match_token(&[TokenType::Break]) {
+            self.break_statement()
+        } else if self.match_token(&[TokenType::Continue]) {
+            self.continue_statement()
         } else if self.match_token(&[TokenType::While]) {
             self.while_statement()
         } else if self.match_token(&[TokenType::LeftBrace]) {
@@ -273,6 +279,18 @@ impl Parser {
         };
         self.consume(TokenType::Semicolon, "Expect ';' after return value.")?;
         Ok(Stmt::Return(ReturnStmt { keyword, value }))
+    }
+
+    pub fn break_statement(&mut self) -> Result<Stmt, ParserError> {
+        let keyword = self.previous().clone();
+        self.consume(TokenType::Semicolon, "Expect ';' after 'break'.")?;
+        Ok(Stmt::Break(BreakStmt { keyword }))
+    }
+
+    pub fn continue_statement(&mut self) -> Result<Stmt, ParserError> {
+        let keyword = self.previous().clone();
+        self.consume(TokenType::Semicolon, "Expect ';' after 'continue'.")?;
+        Ok(Stmt::Continue(ContinueStmt { keyword }))
     }
 
     pub fn while_statement(&mut self) -> Result<Stmt, ParserError> {

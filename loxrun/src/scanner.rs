@@ -111,7 +111,9 @@ impl Scanner {
     fn get_keyword(&self, word: &str) -> Option<TokenType> {
         match word {
             "and" => Some(TokenType::And),
+            "break" => Some(TokenType::Break),
             "class" => Some(TokenType::Class),
+            "continue" => Some(TokenType::Continue),
             "else" => Some(TokenType::Else),
             "false" => Some(TokenType::False),
             "for" => Some(TokenType::For),
