@@ -99,7 +99,10 @@ impl Environment {
         match &self.enclosing {
             Some(enclosing) => enclosing.borrow_mut().assign(name, value),
             None => Err(InterpreterError {
-                message: format!("Undefined variable '{}'", name.lexeme),
+                message: format!(
+                    "Undefined variable '{}'.\n[line {}]",
+                    name.lexeme, name.line
+                ),
             }),
         }
     }
@@ -246,7 +249,10 @@ impl Interpreter {
             Expression::Variable(variable) => match self.environment.borrow().get(&variable.name) {
                 Some(value) => Ok(value.clone()),
                 None => Err(InterpreterError {
-                    message: format!("Variable {} not found", variable.name.lexeme),
+                    message: format!(
+                        "Undefined variable '{}'.\n[line {}]",
+                        variable.name.lexeme, variable.name.line
+                    ),
                 }),
             },
             Expression::Assign(assign) => {
@@ -284,7 +290,10 @@ impl Interpreter {
             }
         } else {
             return Err(InterpreterError {
-                message: "Can only call functions".to_string(),
+                message: format!(
+                    "Can only call functions and classes.\n[line {}]",
+                    call.paren.line
+                ),
             });
         }
     }
@@ -323,18 +332,19 @@ impl Interpreter {
             TokenType::Bang => match right {
                 Value::Bool(value) => Ok(Value::Bool(!value)),
                 Value::Nil => Ok(Value::Bool(true)),
-                _ => Err(InterpreterError {
-                    message: "Operand must be a boolean".to_string(),
-                }),
+                _ => Ok(Value::Bool(false)),
             },
             TokenType::Minus => match right {
                 Value::Number(value) => Ok(Value::Number(-value)),
                 _ => Err(InterpreterError {
-                    message: "Operand must be a number".to_string(),
+                    message: format!("Operand must be a number.\n[line {}]", unary.operator.line),
                 }),
             },
             _ => Err(InterpreterError {
-                message: "Invalid operator".to_string(),
+                message: format!(
+                    "Invalid operator '{}'.\n[line {}]",
+                    unary.operator.lexeme, unary.operator.line
+                ),
             }),
         }
     }
@@ -347,19 +357,19 @@ impl Interpreter {
             TokenType::Minus => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left - right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::Slash => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left / right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::Star => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left * right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::Plus => match (left, right) {
@@ -368,31 +378,34 @@ impl Interpreter {
                     Ok(Value::String(format!("{}{}", left, right)))
                 }
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers or strings".to_string(),
+                    message: format!(
+                        "Operands must be two numbers or two strings.\n[line {}]",
+                        binary.operator.line
+                    ),
                 }),
             },
             TokenType::Greater => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left > right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::GreaterEqual => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left >= right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::Less => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left < right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::LessEqual => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left <= right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::BangEqual => match (left, right) {
@@ -400,21 +413,17 @@ impl Interpreter {
                 (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left != right)),
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left != right)),
                 (Value::String(left), Value::String(right)) => Ok(Value::Bool(left != right)),
-                _ => Err(InterpreterError {
-                    message: "Operands must be of the same type".to_string(),
-                }),
+                _ => Ok(Value::Bool(true)),
             },
             TokenType::EqualEqual => match (left, right) {
                 (Value::Nil, Value::Nil) => Ok(Value::Bool(true)),
                 (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left == right)),
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left == right)),
                 (Value::String(left), Value::String(right)) => Ok(Value::Bool(left == right)),
-                _ => Err(InterpreterError {
-                    message: "Operands must be of the same type".to_string(),
-                }),
+                _ => Ok(Value::Bool(false)),
             },
             _ => Err(InterpreterError {
-                message: "Invalid operator".to_string(),
+                message: "Invalid operator.".to_string(),
             }),
         }
     }
@@ -684,7 +693,10 @@ mod tests {
 
         let result = run(source);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().message, "Variable a not found");
+        assert_eq!(
+            result.unwrap_err().message,
+            "Undefined variable 'a'.\n[line 2]"
+        );
     }
 
     #[test]
@@ -729,7 +741,10 @@ mod tests {
 
         let result = run(source);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().message, "Variable a not found");
+        assert_eq!(
+            result.unwrap_err().message,
+            "Undefined variable 'a'.\n[line 6]"
+        );
     }
 
     #[test]

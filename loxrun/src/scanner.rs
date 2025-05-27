@@ -257,7 +257,7 @@ impl Scanner {
     }
 
     fn report(&mut self, line: i32, location: &str, message: &str) {
-        println!("[line  {}] Error {}: {}", line, location, message);
+        eprintln!("[line {}] Error: {}", line, message);
         self.had_error = true;
     }
 }
