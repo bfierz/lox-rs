@@ -1029,4 +1029,27 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "1\n2\n");
     }
+
+    #[test]
+    fn test_function_object_with_closure_and_outer_variable() {
+        let source = "
+        var outerVar = 10;
+        fun makeCounter() {
+            var i = 0;
+            fun count() {
+                i = i + 1;
+                return i + outerVar;
+            }
+            return count;
+        }
+        var counter = makeCounter();
+        print counter();
+        print counter();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "11\n12\n");
+    }
 }
