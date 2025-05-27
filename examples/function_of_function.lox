@@ -1,0 +1,2 @@
+fun add(x) { fun addX(y) { return x + y; } return addX; }
+print add(2)(3);
