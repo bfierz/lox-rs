@@ -1,8 +1,9 @@
 use std::env;
-use std::process;
 use std::fs;
 use std::io::{self, Write};
+use std::process;
 
+mod callable;
 mod expression;
 mod interpreter;
 mod parser;
@@ -30,7 +31,8 @@ fn main() {
 fn run_file(filename: &str) {
     match fs::read_to_string(filename) {
         Ok(contents) => {
-            let har_error = run(contents);
+            let mut interpreter = interpreter::Interpreter::new();
+            let har_error = run(&mut interpreter, contents);
             if har_error {
                 process::exit(65);
             }
@@ -47,6 +49,7 @@ fn run_prompt() {
     let mut stdout = io::stdout();
     let mut input = String::new();
 
+    let mut interpreter = interpreter::Interpreter::new();
     loop {
         print!("> ");
         stdout.flush().expect("Failed to flush stdout");
@@ -61,11 +64,11 @@ fn run_prompt() {
             break;
         }
 
-        run(input.clone());
+        run(&mut interpreter, input.clone());
     }
 }
 
-fn run(source: String) -> bool {
+fn run(interpreter: &mut interpreter::Interpreter, source: String) -> bool {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().clone();
     if scanner.had_error {
@@ -82,8 +85,7 @@ fn run(source: String) -> bool {
 
     let statements = parse_result.unwrap();
 
-    let mut interpreter = interpreter::Interpreter::new(&statements);
-    let result = interpreter.execute();
+    let result = interpreter.execute(&statements);
     if let Err(err) = result {
         eprintln!("{}", err.message);
         return true;

@@ -1,19 +1,26 @@
 use crate::{
-    expression::{Assign, Binary, Expression, Grouping, Literal, Logical, Unary, Variable},
-    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt},
-    tokens::{LiteralTypes, Token, TokenType}
+    expression::{Assign, Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable},
+    stmt::{
+        BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt, VarStmt,
+        WhileStmt,
+    },
+    tokens::{LiteralTypes, Token, TokenType},
 };
 
 // Production rules
 // program -> statement* EOF ;
 
-// declaration -> varDecl | statement ;
+// declaration -> funDecl | varDecl | statement ;
+// funDecls -> "fun" function ;
+// function -> IDENTIFIER "(" parameters? ")" block ;
+// parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
 // varDecl -> "var" IDENTIFIER ("=" expression)? ";" ;
-// statement -> exprStmt | forStmt | ifStmt | printStmt | whileStmt | block ;
+// statement -> exprStmt | forStmt | ifStmt | printStmt | returnStm | whileStmt | block ;
 // exprStmt -> expression ";" ;
 // forStmt -> "for" "(" (varDecl | exprStmt | ";") expression? ";" expression? ")" statement ;
 // ifStmt -> "if" "(" expression ")" statement ( "else" statement )? ;
 // printStmt -> "print" expression ";" ;
+// returnStmt -> "return" expression? ";" ;
 // whileStmt -> "while" "(" expression ")" statement ;
 // block -> "{" declaration* "}" ;
 
@@ -25,8 +32,10 @@ use crate::{
 // comparison -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 // term -> factor ( ( "-" | "+" ) factor )* ;
 // factor -> unary ( ( "/" | "*" ) unary )* ;
-// unary -> ( "!" | "-" ) unary | primary ;
+// unary -> ( "!" | "-" ) unary | call ;
+// call -> primary ( "(" arguments? ")" )* ;
 // primary -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER ;
+// arguments -> expression ( "," expression )* ;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -81,13 +90,50 @@ impl Parser {
     }
 
     pub fn declaration(&mut self) -> Result<Stmt, ParserError> {
-        if self.match_token(&[TokenType::Var]) {
+        if self.match_token(&[TokenType::Fun]) {
+            self.fun_declaration()
+        } else if self.match_token(&[TokenType::Var]) {
             self.var_declaration()
         } else {
             self.statement()
         }
     }
-    
+
+    pub fn fun_declaration(&mut self) -> Result<Stmt, ParserError> {
+        let name = self.consume(TokenType::Identifier, "Expect function name.")?;
+        self.consume(TokenType::LeftParen, "Expect '(' after function name.")?;
+
+        let mut params = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                if params.len() >= 255 {
+                    return Err(ParserError {
+                        message: "Can't have more than 255 parameters.".to_string(),
+                    });
+                }
+                params.push(self.consume(TokenType::Identifier, "Expect parameter name.")?);
+                if !self.match_token(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
+        self.consume(TokenType::LeftBrace, "Expect '{' before function body.")?;
+        let body = match self.block()? {
+            Stmt::Block(block) => block,
+            _ => {
+                return Err(ParserError {
+                    message: "Expected block after function declaration.".to_string(),
+                })
+            }
+        };
+        Ok(Stmt::Function(FunctionStmt {
+            name,
+            params,
+            body: body.statements,
+        }))
+    }
+
     pub fn var_declaration(&mut self) -> Result<Stmt, ParserError> {
         let name = self.consume(TokenType::Identifier, "Expect variable name.")?;
         let initializer = if self.match_token(&[TokenType::Equal]) {
@@ -95,8 +141,11 @@ impl Parser {
         } else {
             None
         };
-        self.consume(TokenType::Semicolon, "Expect ';' after variable declaration.")?;
-        Ok(Stmt::Var(VarStmt{name, initializer}))
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        )?;
+        Ok(Stmt::Var(VarStmt { name, initializer }))
     }
 
     pub fn statement(&mut self) -> Result<Stmt, ParserError> {
@@ -106,6 +155,8 @@ impl Parser {
             self.if_statement()
         } else if self.match_token(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.match_token(&[TokenType::Return]) {
+            self.return_statement()
         } else if self.match_token(&[TokenType::While]) {
             self.while_statement()
         } else if self.match_token(&[TokenType::LeftBrace]) {
@@ -144,7 +195,12 @@ impl Parser {
 
         if let Some(increment) = increment {
             body = Box::new(Stmt::Block(BlockStmt {
-                statements: vec![*body, Stmt::Expression(ExpressionStmt { expression: Box::new(increment) })],
+                statements: vec![
+                    *body,
+                    Stmt::Expression(ExpressionStmt {
+                        expression: Box::new(increment),
+                    }),
+                ],
             }));
         }
 
@@ -156,7 +212,9 @@ impl Parser {
         }
 
         if let Some(initializer) = initializer {
-            Ok(Stmt::Block(BlockStmt { statements: vec![initializer, *body] }))
+            Ok(Stmt::Block(BlockStmt {
+                statements: vec![initializer, *body],
+            }))
         } else {
             Ok(*body)
         }
@@ -185,6 +243,17 @@ impl Parser {
         Ok(Stmt::Print(PrintStmt {
             expression: Box::new(value),
         }))
+    }
+
+    pub fn return_statement(&mut self) -> Result<Stmt, ParserError> {
+        let keyword = self.previous().clone();
+        let value = if !self.check(&TokenType::Semicolon) {
+            Some(Box::new(self.expression()?))
+        } else {
+            None
+        };
+        self.consume(TokenType::Semicolon, "Expect ';' after return value.")?;
+        Ok(Stmt::Return(ReturnStmt { keyword, value }))
     }
 
     pub fn while_statement(&mut self) -> Result<Stmt, ParserError> {
@@ -238,7 +307,9 @@ impl Parser {
                     }));
                 }
                 _ => {
-                    return Err(ParserError { message: "Invalid assignment target".to_string() });
+                    return Err(ParserError {
+                        message: "Invalid assignment target".to_string(),
+                    });
                 }
             }
         }
@@ -297,7 +368,12 @@ impl Parser {
     pub fn comparison(&mut self) -> Result<Expression, ParserError> {
         let mut expr = self.term()?;
 
-        while self.match_token(&[TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual]) {
+        while self.match_token(&[
+            TokenType::Greater,
+            TokenType::GreaterEqual,
+            TokenType::Less,
+            TokenType::LessEqual,
+        ]) {
             let operator = self.previous().clone();
             let right = self.term()?;
             expr = Expression::Binary(Binary {
@@ -351,8 +427,45 @@ impl Parser {
                 right: Box::new(right),
             }))
         } else {
-            self.primary()
+            self.call()
         }
+    }
+
+    pub fn call(&mut self) -> Result<Expression, ParserError> {
+        let mut expr = self.primary()?;
+
+        loop {
+            if self.match_token(&[TokenType::LeftParen]) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+
+    pub fn finish_call(&mut self, callee: Expression) -> Result<Expression, ParserError> {
+        let mut arguments = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                if arguments.len() >= 255 {
+                    return Err(ParserError {
+                        message: "Can't have more than 255 arguments.".to_string(),
+                    });
+                }
+                arguments.push(self.expression()?);
+                if !self.match_token(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+        let paren = self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
+        Ok(Expression::Call(Call {
+            callee: Box::new(callee),
+            paren,
+            arguments,
+        }))
     }
 
     pub fn primary(&mut self) -> Result<Expression, ParserError> {
@@ -389,16 +502,22 @@ impl Parser {
             match identifier.literal {
                 LiteralTypes::String(ref s) => {
                     if s.is_empty() {
-                        return Err(ParserError { message: "Empty identifier".to_string() });
+                        return Err(ParserError {
+                            message: "Empty identifier".to_string(),
+                        });
                     }
                     Ok(Expression::Variable(Variable {
                         name: identifier.clone(),
                     }))
                 }
-                _ => Err(ParserError { message: "Expected identifier".to_string() }),
+                _ => Err(ParserError {
+                    message: "Expected identifier".to_string(),
+                }),
             }
         } else {
-            Err(ParserError {message: "Expected literal or grouping".to_string()})
+            Err(ParserError {
+                message: "Expected literal or grouping".to_string(),
+            })
         }
     }
 
@@ -418,7 +537,9 @@ impl Parser {
             self.advance();
             Ok(self.previous())
         } else {
-            Err(ParserError { message: message.to_string() })
+            Err(ParserError {
+                message: message.to_string(),
+            })
         }
     }
 
