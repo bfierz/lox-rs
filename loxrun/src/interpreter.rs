@@ -207,10 +207,14 @@ impl Interpreter {
             }
             Stmt::While(while_stmt) => {
                 while self.expression(&*while_stmt.condition)?.is_true() {
-                    if let Ok(InterpreterResult::Return(value)) =
-                        self.execute_statement(&*while_stmt.body)
-                    {
-                        return Ok(InterpreterResult::Return(value));
+                    match self.execute_statement(&*while_stmt.body) {
+                        Err(e) => {
+                            return Err(e);
+                        }
+                        Ok(InterpreterResult::Return(value)) => {
+                            return Ok(InterpreterResult::Return(value));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -229,9 +233,16 @@ impl Interpreter {
 
         let mut result = InterpreterResult::None;
         for statement in statements {
-            if let Ok(InterpreterResult::Return(value)) = self.execute_statement(statement) {
-                result = InterpreterResult::Return(value);
-                break;
+            match self.execute_statement(statement) {
+                Err(e) => {
+                    self.environment = previous;
+                    return Err(e);
+                }
+                Ok(InterpreterResult::Return(value)) => {
+                    result = InterpreterResult::Return(value);
+                    break;
+                }
+                _ => {}
             }
         }
         self.environment = previous;
