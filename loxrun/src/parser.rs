@@ -221,6 +221,13 @@ impl Parser {
                 condition: Box::new(condition),
                 body,
             }));
+        } else {
+            body = Box::new(Stmt::While(WhileStmt {
+                condition: Box::new(Expression::Literal(Literal {
+                    value: LiteralTypes::Bool(true),
+                })),
+                body,
+            }));
         }
 
         if let Some(initializer) = initializer {
