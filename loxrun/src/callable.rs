@@ -1,11 +1,23 @@
 use crate::interpreter::{Environment, Interpreter, InterpreterError, InterpreterResult, Value};
 use crate::stmt::FunctionStmt;
 use std::cell::RefCell;
+use std::fmt;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Callable {
+    DynamicFunction(LoxDynamicFunction),
     Function(LoxFunction),
+}
+impl std::fmt::Display for Callable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Callable::DynamicFunction(fun) => {
+                write!(f, "{}", fun.callable.borrow().as_ref().to_string())
+            }
+            Callable::Function(fun) => write!(f, "{}", fun.to_string()),
+        }
+    }
 }
 
 pub trait LoxCallable {
@@ -16,6 +28,31 @@ pub trait LoxCallable {
         arguments: Vec<Value>,
     ) -> Result<Value, InterpreterError>;
     fn to_string(&self) -> String;
+}
+
+pub struct LoxDynamicFunction {
+    pub callable: Rc<RefCell<Box<dyn LoxCallable>>>,
+}
+impl Clone for LoxDynamicFunction {
+    fn clone(&self) -> Self {
+        Self {
+            callable: Rc::clone(&self.callable),
+        }
+    }
+}
+impl fmt::Debug for LoxDynamicFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "LoxDynamicFunction {{ callable: {:?} }}",
+            self.callable.borrow().to_string()
+        )
+    }
+}
+impl PartialEq for LoxDynamicFunction {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.callable, &other.callable)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
