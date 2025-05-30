@@ -1,4 +1,6 @@
-use crate::callable::{Callable, LoxCallable, LoxFunction};
+use crate::callable::{
+    Callable, LoxBuiltinFunctionClock, LoxCallable, LoxDynamicFunction, LoxFunction,
+};
 use crate::expression::{Binary, Call, Expression, Grouping, Literal, Logical, Unary};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
@@ -36,7 +38,7 @@ impl Value {
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Callable(_) => write!(f, "<function>"),
+            Value::Callable(c) => write!(f, "{}", c),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
@@ -132,10 +134,12 @@ pub struct Interpreter {
 impl Interpreter {
     pub fn new() -> Self {
         let globals = Rc::new(RefCell::new(Environment::new()));
-        //globals.borrow_mut().define(
-        //    "clock".to_string(),
-        //    Value::Callable(LoxBuiltinFunctionClock::new()),
-        //);
+        globals.borrow_mut().define(
+            "clock".to_string(),
+            Value::Callable(Callable::DynamicFunction(LoxDynamicFunction {
+                callable: Rc::new(RefCell::new(Box::new(LoxBuiltinFunctionClock::new()))),
+            })),
+        );
         Interpreter {
             globals: Rc::clone(&globals),
             environment: globals,
@@ -279,25 +283,42 @@ impl Interpreter {
     fn call(&mut self, call: &Call) -> Result<Value, InterpreterError> {
         let callee = self.expression(&*call.callee)?;
         if let Value::Callable(callable) = &callee {
-            if let Callable::Function(func) = callable {
-                let mut arguments = Vec::new();
-                for arg in &call.arguments {
-                    arguments.push(self.expression(arg)?);
+            match callable {
+                Callable::DynamicFunction(func) => {
+                    let mut arguments = Vec::new();
+                    for arg in &call.arguments {
+                        arguments.push(self.expression(arg)?);
+                    }
+                    let arity = func.callable.borrow().as_ref().arity();
+                    if arguments.len() != arity {
+                        return Err(InterpreterError {
+                            message: format!(
+                                "Expected {} arguments but got {}.\n[line {}]",
+                                arity,
+                                arguments.len(),
+                                call.paren.line
+                            ),
+                        });
+                    }
+                    func.callable.borrow().as_ref().call(self, arguments)
                 }
-                if arguments.len() != func.arity() {
-                    return Err(InterpreterError {
-                        message: format!(
-                            "Expected {} arguments but got {}",
-                            func.arity(),
-                            arguments.len()
-                        ),
-                    });
+                Callable::Function(func) => {
+                    let mut arguments = Vec::new();
+                    for arg in &call.arguments {
+                        arguments.push(self.expression(arg)?);
+                    }
+                    if arguments.len() != func.arity() {
+                        return Err(InterpreterError {
+                            message: format!(
+                                "Expected {} arguments but got {}.\n[line {}]",
+                                func.arity(),
+                                arguments.len(),
+                                call.paren.line
+                            ),
+                        });
+                    }
+                    func.call(self, arguments)
                 }
-                func.call(self, arguments)
-            } else {
-                return Err(InterpreterError {
-                    message: "Can only call functions".to_string(),
-                });
             }
         } else {
             return Err(InterpreterError {
@@ -976,6 +997,24 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Hello, World!\n");
+    }
+
+    #[test]
+    fn test_function_definition_and_call_with_return_from_loop() {
+        let source = "
+        fun bar() {
+            for (var i = 0;; i = i + 1) {
+                print i;
+                if (i >= 2) return;
+            }
+        }
+        bar();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "0\n1\n2\n");
     }
 
     #[test]
