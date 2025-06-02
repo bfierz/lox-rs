@@ -53,15 +53,22 @@ impl Parser {
     }
 
     pub fn parse(&mut self) -> Result<Vec<Stmt>, ParserError> {
+        let mut has_error = false;
         let mut statements = Vec::new();
         while !self.is_at_end() {
             match self.declaration() {
                 Ok(stmt) => statements.push(stmt),
                 Err(err) => {
-                    eprintln!("Error: {}", err.message);
+                    has_error = true;
+                    eprintln!("{}", err.message);
                     self.synchronize();
                 }
             }
+        }
+        if has_error {
+            return Err(ParserError {
+                message: "Parsing failed with errors.".to_string(),
+            });
         }
         Ok(statements)
     }
@@ -107,8 +114,13 @@ impl Parser {
         if !self.check(&TokenType::RightParen) {
             loop {
                 if params.len() >= 255 {
+                    let line = self.tokens[self.current].line;
+                    let name = &self.tokens[self.current].lexeme;
                     return Err(ParserError {
-                        message: "Can't have more than 255 parameters.".to_string(),
+                        message: format!(
+                            "[line {}] Error at '{}': {}",
+                            line, name, "Can't have more than 255 parameters."
+                        ),
                     });
                 }
                 params.push(self.consume(TokenType::Identifier, "Expect parameter name.")?);
@@ -209,6 +221,13 @@ impl Parser {
                 condition: Box::new(condition),
                 body,
             }));
+        } else {
+            body = Box::new(Stmt::While(WhileStmt {
+                condition: Box::new(Expression::Literal(Literal {
+                    value: LiteralTypes::Bool(true),
+                })),
+                body,
+            }));
         }
 
         if let Some(initializer) = initializer {
@@ -268,17 +287,25 @@ impl Parser {
     }
 
     pub fn block(&mut self) -> Result<Stmt, ParserError> {
+        let mut has_error = false;
+        let mut last_error: String = "".to_string();
         let mut statements = Vec::new();
         while !self.is_at_end() && self.tokens[self.current].token_type != TokenType::RightBrace {
             match self.declaration() {
                 Ok(stmt) => statements.push(stmt),
                 Err(err) => {
-                    eprintln!("Error: {}", err.message);
+                    has_error = true;
+                    last_error = err.message.clone();
                     self.synchronize();
                 }
             }
         }
         self.consume(TokenType::RightBrace, "Expect '}' after block.")?;
+        if has_error {
+            return Err(ParserError {
+                message: last_error,
+            });
+        }
         Ok(Stmt::Block(BlockStmt { statements }))
     }
 
@@ -308,7 +335,10 @@ impl Parser {
                 }
                 _ => {
                     return Err(ParserError {
-                        message: "Invalid assignment target".to_string(),
+                        message: format!(
+                            "[line {}] Error at '=': Invalid assignment target.",
+                            self.previous().line
+                        ),
                     });
                 }
             }
@@ -450,8 +480,13 @@ impl Parser {
         if !self.check(&TokenType::RightParen) {
             loop {
                 if arguments.len() >= 255 {
+                    let line = self.tokens[self.current].line;
+                    let name = &self.tokens[self.current].lexeme;
                     return Err(ParserError {
-                        message: "Can't have more than 255 arguments.".to_string(),
+                        message: format!(
+                            "[line {}] Error at '{}': {}",
+                            line, name, "Can't have more than 255 arguments."
+                        ),
                     });
                 }
                 arguments.push(self.expression()?);
@@ -515,8 +550,13 @@ impl Parser {
                 }),
             }
         } else {
+            let line = self.tokens[self.current].line;
+            let name = self.tokens[self.current].lexeme.clone();
             Err(ParserError {
-                message: "Expected literal or grouping".to_string(),
+                message: format!(
+                    "[line {}] Error at '{}': {}",
+                    line, name, "Expect expression."
+                ),
             })
         }
     }
@@ -537,8 +577,10 @@ impl Parser {
             self.advance();
             Ok(self.previous())
         } else {
+            let line = self.tokens[self.current].line;
+            let name = self.tokens[self.current].lexeme.clone();
             Err(ParserError {
-                message: message.to_string(),
+                message: format!("[line {}] Error at '{}': {}", line, name, message),
             })
         }
     }

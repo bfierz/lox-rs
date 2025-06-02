@@ -1,3 +1,5 @@
+use std::cmp::max;
+
 use crate::tokens::{LiteralTypes, Token, TokenType};
 
 pub struct Scanner {
@@ -133,7 +135,7 @@ impl Scanner {
             self.advance();
         }
 
-        let text = &self.source[self.start as usize..self.current as usize];
+        let text = self.substr_chars(self.start as usize, self.current as usize);
         let token_type = self.get_keyword(text);
 
         match token_type {
@@ -164,7 +166,8 @@ impl Scanner {
             }
         }
 
-        let value: f64 = self.source[self.start as usize..self.current as usize]
+        let value: f64 = self
+            .substr_chars(self.start as usize, self.current as usize)
             .parse()
             .unwrap();
         self.add_token_with_literal(TokenType::Number, LiteralTypes::Number(value));
@@ -187,7 +190,11 @@ impl Scanner {
         self.advance();
 
         // Trim the surrounding quotes.
-        let value = &self.source[(self.start + 1) as usize..(self.current - 1) as usize];
+        let value = if self.start + 1 < self.current - 1 {
+            self.substr_chars((self.start + 1) as usize, (self.current - 1) as usize)
+        } else {
+            ""
+        };
         self.add_token_with_literal(TokenType::String, LiteralTypes::String(value.to_string()));
     }
 
@@ -214,7 +221,7 @@ impl Scanner {
     }
 
     fn peek_next(&self) -> char {
-        if self.current + 1 >= self.source.len() as i32 {
+        if self.current + 1 >= self.source.chars().count() as i32 {
             '\0'
         } else {
             self.source
@@ -233,7 +240,7 @@ impl Scanner {
     }
 
     fn is_at_end(&self) -> bool {
-        self.current >= self.source.len() as i32
+        self.current >= self.source.chars().count() as i32
     }
 
     fn advance(&mut self) -> char {
@@ -247,9 +254,23 @@ impl Scanner {
     }
 
     fn add_token_with_literal(&mut self, token_type: TokenType, literal: LiteralTypes) {
-        let text = &self.source[self.start as usize..self.current as usize];
+        let text = self.substr_chars(self.start as usize, self.current as usize);
         self.tokens
             .push(Token::new(token_type, text.to_string(), literal, self.line));
+    }
+
+    fn substr_chars(&self, first: usize, last: usize) -> &str {
+        let len = if first < last { last - first - 1 } else { 0 };
+        let mut char_indices = self.source.char_indices().skip(first);
+        let begin = char_indices
+            .next()
+            .map(|(i, _)| i)
+            .unwrap_or(self.source.len());
+        let end = char_indices
+            .nth(len)
+            .map(|(i, _)| i)
+            .unwrap_or(self.source.len());
+        &self.source[begin..end]
     }
 
     fn error(&mut self, line: i32, message: &str) {
@@ -257,7 +278,7 @@ impl Scanner {
     }
 
     fn report(&mut self, line: i32, location: &str, message: &str) {
-        println!("[line  {}] Error {}: {}", line, location, message);
+        eprintln!("[line {}] Error: {}", line, message);
         self.had_error = true;
     }
 }

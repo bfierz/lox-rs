@@ -1,0 +1,1252 @@
+diff --git a/tool/bin/build.dart b/tool/bin/build.dart
+index 17245bb3..90605bf3 100644
+--- a/tool/bin/build.dart
++++ b/tool/bin/build.dart
+@@ -73,8 +73,7 @@ void _buildPages({bool skipUpToDate = false}) {
+ List<int> _buildPage(Book book, Mustache mustache, Page page,
+     {DateTime dependenciesModified}) {
+   // See if the HTML is up to date.
+-  if (dependenciesModified != null &&
+-      _isUpToDate(page.htmlPath, page.markdownPath, dependenciesModified)) {
++  if (_isUpToDate(page.htmlPath, page.markdownPath, dependenciesModified)) {
+     return [0, 0, 0];
+   }
+ 
+@@ -85,10 +84,6 @@ List<int> _buildPage(Book book, Mustache mustache, Page page,
+   var wordCount = proseCount;
+   for (var tag in page.codeTags) {
+     var snippet = book.findSnippet(tag);
+-    if (snippet == null) {
+-      print("No snippet for $tag");
+-      continue;
+-    }
+ 
+     codeLineCount += snippet.added.length;
+     for (var line in snippet.added) wordCount += line.wordCount;
+@@ -202,7 +197,7 @@ DateTime _mostRecentlyModified(List<String> globs) {
+     for (var entry in Glob(glob).listSync()) {
+       if (entry is File) {
+         var modified = entry.lastModifiedSync();
+-        if (latest == null || modified.isAfter(latest)) latest = modified;
++        if (modified.isAfter(latest)) latest = modified;
+       }
+     }
+   }
+diff --git a/tool/bin/split_chapters.dart b/tool/bin/split_chapters.dart
+index d0209e8f..6d34a0ed 100644
+--- a/tool/bin/split_chapters.dart
++++ b/tool/bin/split_chapters.dart
+@@ -4,7 +4,6 @@ import 'package:tool/src/split_chapter.dart';
+ void main(List<String> arguments) {
+   var book = Book();
+   for (var page in book.pages) {
+-    if (page.language == null) continue;
+     splitChapter(book, page);
+   }
+ }
+diff --git a/tool/bin/test.dart b/tool/bin/test.dart
+index cb1981cb..aa57ef70 100644
+--- a/tool/bin/test.dart
++++ b/tool/bin/test.dart
+@@ -22,10 +22,10 @@ var _failed = 0;
+ var _skipped = 0;
+ var _expectations = 0;
+ 
+-Suite _suite;
+-String _filterPath;
+-String _customInterpreter;
+-List<String> _customArguments;
++Suite? _suite;
++String? _filterPath;
++String? _customInterpreter;
++List<String> _customArguments = [];
+ 
+ final _allSuites = <String, Suite>{};
+ final _cSuites = <String>[];
+@@ -110,16 +110,19 @@ void _runSuites(List<String> names) {
+ }
+ 
+ bool _runSuite(String name) {
+-  _suite = _allSuites[name];
++  var suite = _allSuites[name];
++  if (suite == null) {
++    print("Unknown test suite ${name}");
++    exit(1);
++  }
++  _suite = suite;
+ 
+   _passed = 0;
+   _failed = 0;
+   _skipped = 0;
+   _expectations = 0;
+ 
+-  for (var file in Glob("test/**.lox").listSync()) {
+-    _runTest(file.path);
+-  }
++  _runTests();
+ 
+   term.clearLine();
+ 
+@@ -134,6 +137,19 @@ bool _runSuite(String name) {
+   return _failed == 0;
+ }
+ 
++void _runTests() {
++  final dir = Directory('test');
++  if (!(dir.existsSync())) {
++    return;
++  }
++
++  for (var file in dir.listSync(recursive: true)) {
++    if (file is File && file.path.endsWith('.lox')) {
++      _runTest(file.path);
++    }
++  }
++}
++
+ void _runTest(String path) {
+   if (path.contains("benchmark")) return;
+ 
+@@ -144,7 +160,7 @@ void _runTest(String path) {
+   // Check if we are just running a subset of the tests.
+   if (_filterPath != null) {
+     var thisTest = p.posix.relative(path, from: "test");
+-    if (!thisTest.startsWith(_filterPath)) return;
++    if (!thisTest.startsWith(_filterPath!)) return;
+   }
+ 
+   // Update the status line.
+@@ -191,7 +207,7 @@ class Test {
+   final _expectedErrors = <String>{};
+ 
+   /// The expected runtime error message or `null` if there should not be one.
+-  String _expectedRuntimeError;
++  String? _expectedRuntimeError;
+ 
+   /// If there is an expected runtime error, the line it should occur on.
+   int _runtimeErrorLine = 0;
+@@ -207,7 +223,11 @@ class Test {
+     // Get the path components.
+     var parts = _path.split("/");
+     var subpath = "";
+-    String state;
++    String? state;
++
++    if (_suite == null) {
++      throw "Test suite not set.";
++    }
+ 
+     // Figure out the state of the test. We don't break out of this loop because
+     // we want lines for more specific paths to override more general ones.
+@@ -215,8 +235,8 @@ class Test {
+       if (subpath.isNotEmpty) subpath += "/";
+       subpath += part;
+ 
+-      if (_suite.tests.containsKey(subpath)) {
+-        state = _suite.tests[subpath];
++      if (_suite!.tests.containsKey(subpath)) {
++        state = _suite!.tests[subpath];
+       }
+     }
+ 
+@@ -237,7 +257,7 @@ class Test {
+ 
+       match = _expectedOutputPattern.firstMatch(line);
+       if (match != null) {
+-        _expectedOutput.add(ExpectedOutput(lineNum, match[1]));
++        _expectedOutput.add(ExpectedOutput(lineNum, match[1]!));
+         _expectations++;
+         continue;
+       }
+@@ -260,7 +280,7 @@ class Test {
+         // the tests can indicate if an error line should only appear for a
+         // certain interpreter.
+         var language = match[2];
+-        if (language == null || language == _suite.language) {
++        if (language == null || language == _suite!.language) {
+           _expectedErrors.add("[${match[3]}] ${match[4]}");
+ 
+           // If we expect a compile error, it should exit with EX_DATAERR.
+@@ -294,10 +314,11 @@ class Test {
+   /// Invoke the interpreter and run the test.
+   List<String> run() {
+     var args = [
+-      if (_customInterpreter != null) ...?_customArguments else ..._suite.args,
++      if (_customInterpreter != null) ...?_customArguments else ..._suite!.args,
+       _path
+     ];
+-    var result = Process.runSync(_customInterpreter ?? _suite.executable, args);
++    var result =
++        Process.runSync(_customInterpreter ?? _suite!.executable, args);
+ 
+     // Normalize Windows line endings.
+     var outputLines = const LineSplitter().convert(result.stdout as String);
+@@ -327,7 +348,7 @@ class Test {
+     }
+ 
+     // Make sure the stack trace has the right line.
+-    RegExpMatch match;
++    RegExpMatch? match;
+     var stackLines = errorLines.sublist(1);
+     for (var line in stackLines) {
+       match = _stackTracePattern.firstMatch(line);
+@@ -337,7 +358,7 @@ class Test {
+     if (match == null) {
+       fail("Expected stack trace and got:", stackLines);
+     } else {
+-      var stackLine = int.parse(match[1]);
++      var stackLine = int.parse(match[1]!);
+       if (stackLine != _runtimeErrorLine) {
+         fail("Expected runtime error on line $_runtimeErrorLine "
+             "but was on line $stackLine.");
+@@ -422,9 +443,11 @@ class Test {
+     }
+   }
+ 
+-  void fail(String message, [List<String> lines]) {
++  void fail(String message, [List<String> lines = const []]) {
+     _failures.add(message);
+-    if (lines != null) _failures.addAll(lines);
++    if (lines.isNotEmpty) {
++      _failures.addAll(lines);
++    }
+   }
+ }
+ 
+diff --git a/tool/lib/src/book.dart b/tool/lib/src/book.dart
+index b01bf533..2b213cb7 100644
+--- a/tool/lib/src/book.dart
++++ b/tool/lib/src/book.dart
+@@ -105,12 +105,8 @@ class Book {
+ 
+         var page = Page(chapter, partPage, chapterNumber, pages.length);
+         pages.add(page);
+-        if (partPage != null) {
+-          partPage.chapters.add(page);
+-        } else {
+-          frontmatter.add(page);
+-        }
+-      }
++        partPage.chapters.add(page);
++            }
+     }
+ 
+     // Load the source files.
+@@ -126,12 +122,10 @@ class Book {
+               line.start, () => Snippet(sourceFile, line.start));
+           snippet.addLine(lineIndex, line);
+ 
+-          if (line.end != null) {
+-            var endSnippet = _snippets.putIfAbsent(
+-                line.end, () => Snippet(sourceFile, line.end));
+-            endSnippet.removeLine(lineIndex, line);
+-          }
+-
++          var endSnippet = _snippets.putIfAbsent(
++              line.end, () => Snippet(sourceFile, line.end));
++          endSnippet.removeLine(lineIndex, line);
++
+           lineIndex++;
+         }
+       }
+@@ -168,7 +162,7 @@ class Book {
+     Snippet last;
+     for (var snippet in _snippets.values) {
+       if (snippet.tag.chapter != page) continue;
+-      if (last == null || snippet.tag > last.tag) last = snippet;
++      if (snippet.tag > last.tag) last = snippet;
+     }
+ 
+     return last;
+@@ -219,14 +213,14 @@ class SourceLine {
+     if (tag < start) return false;
+ 
+     // If we are past the snippet where it is removed.
+-    if (end != null && tag >= end) return false;
++    if (tag >= end) return false;
+ 
+     return true;
+   }
+ 
+   String toString() {
+     var result = "${text.padRight(72)} // $start";
+-    if (end != null) result += " < $end";
++    result += " < $end";
+     return result;
+   }
+ }
+diff --git a/tool/lib/src/location.dart b/tool/lib/src/location.dart
+index 8ab01fe3..1d1c55d0 100644
+--- a/tool/lib/src/location.dart
++++ b/tool/lib/src/location.dart
+@@ -38,8 +38,8 @@ class Location {
+ 
+   String toString() {
+     var result = "$kind $name";
+-    if (signature != null) result += "($signature)";
+-    if (parent != null) result = "$parent > $result";
++    result += "($signature)";
++    result = "$parent > $result";
+     return result;
+   }
+ 
+@@ -50,7 +50,7 @@ class Location {
+     if (kind == "top") return "add to top of file";
+ 
+     // Note: The order of these is highly significant.
+-    if (kind == "class" && parent?.kind == "class") {
++    if (kind == "class" && parent.kind == "class") {
+       return "nest inside class <em>${parent.name}</em>";
+     }
+ 
+@@ -109,7 +109,7 @@ class Location {
+     if (kind == "top") return "add to top of file";
+ 
+     // Note: The order of these is highly significant.
+-    if (kind == "class" && parent?.kind == "class") {
++    if (kind == "class" && parent.kind == "class") {
+       return "nest inside class <location-type>${parent.name}</location-type>";
+     }
+ 
+diff --git a/tool/lib/src/markdown/block_syntax.dart b/tool/lib/src/markdown/block_syntax.dart
+index 8ebd7877..f347863e 100644
+--- a/tool/lib/src/markdown/block_syntax.dart
++++ b/tool/lib/src/markdown/block_syntax.dart
+@@ -30,10 +30,8 @@ class BookHeaderSyntax extends BlockSyntax {
+     var number = "";
+     if (!header.isSpecial) {
+       number = "${_page.numberString}&#8202;.&#8202;${header.headerIndex}";
+-      if (header.subheaderIndex != null) {
+-        number += "&#8202;.&#8202;${header.subheaderIndex}";
+-      }
+-    }
++      number += "&#8202;.&#8202;${header.subheaderIndex}";
++        }
+ 
+     var link = Element("a", [
+       if (!header.isSpecial) Element("small", [Text(number)]),
+diff --git a/tool/lib/src/markdown/code_syntax.dart b/tool/lib/src/markdown/code_syntax.dart
+index fa0f5411..f32c76fa 100644
+--- a/tool/lib/src/markdown/code_syntax.dart
++++ b/tool/lib/src/markdown/code_syntax.dart
+@@ -137,11 +137,6 @@ String _buildSnippet(Format format, CodeTag tag, Snippet snippet) {
+   // NOTE: If you change this, be sure to update the baked in example snippet
+   // in introduction.md.
+ 
+-  if (snippet == null) {
+-    print("Undefined snippet ${tag.name}");
+-    return "<strong>ERROR: Missing snippet ${tag.name}</strong>\n";
+-  }
+-
+   var location = <String>[];
+   if (tag.showLocation) location = snippet.locationHtmlLines;
+ 
+@@ -153,26 +148,22 @@ String _buildSnippet(Format format, CodeTag tag, Snippet snippet) {
+         cssClass: snippet.added.isNotEmpty ? "insert-before" : null);
+   }
+ 
+-  if (snippet.addedComma != null) {
+-    var commaLine = formatCode(
+-        snippet.file.language, [snippet.addedComma], format,
+-        preClass: "insert-before");
+-    var comma = commaLine.lastIndexOf(",");
+-    buffer.write(commaLine.substring(0, comma));
+-    buffer.write('<span class="insert-comma">,</span>');
+-    buffer.write(commaLine.substring(comma + 1));
+-  }
++  var commaLine = formatCode(
++      snippet.file.language, [snippet.addedComma], format,
++      preClass: "insert-before");
++  var comma = commaLine.lastIndexOf(",");
++  buffer.write(commaLine.substring(0, comma));
++  buffer.write('<span class="insert-comma">,</span>');
++  buffer.write(commaLine.substring(comma + 1));
+ 
+   if (tag.showLocation) {
+     var lines = location.join("<br>\n");
+     buffer.writeln('<div class="source-file">$lines</div>');
+   }
+ 
+-  if (snippet.added != null) {
+-    var added = formatCode(snippet.file.language, snippet.added, format,
+-        preClass: tag.beforeCount > 0 || tag.afterCount > 0 ? "insert" : null);
+-    buffer.write(added);
+-  }
++  var added = formatCode(snippet.file.language, snippet.added, format,
++      preClass: tag.beforeCount > 0 || tag.afterCount > 0 ? "insert" : null);
++  buffer.write(added);
+ 
+   if (snippet.contextAfter.isNotEmpty) {
+     _writeContextHtml(format, buffer, snippet.contextAfter,
+@@ -198,50 +189,46 @@ String _buildSnippetXml(CodeTag tag, Snippet snippet) {
+     _writeContextXml(buffer, snippet.contextBefore, "before");
+   }
+ 
+-  if (snippet.addedComma != null) {
+-    // TODO: How should this look in print?
+-    buffer.write("TODO added comma");
++  // TODO: How should this look in print?
++  buffer.write("TODO added comma");
+ //    var commaLine = formatCode(snippet.file.language, [snippet.addedComma],
+ //        preClass: "insert-before", xml: true);
+ //    var comma = commaLine.lastIndexOf(",");
+ //    buffer.write(commaLine.substring(0, comma));
+ //    buffer.write('<span class="insert-comma">,</span>');
+ //    buffer.write(commaLine.substring(comma + 1));
+-  }
+ 
+-  if (snippet.added != null) {
+-    // Use different tags based on whether there is context before, after,
+-    // neither, or both.
+-    String insertTag;
+-    if (tag.beforeCount > 0) {
+-      if (tag.afterCount > 0) {
+-        insertTag = "interpreter-between";
+-      } else {
+-        insertTag = "interpreter-after";
+-      }
++  // Use different tags based on whether there is context before, after,
++  // neither, or both.
++  String insertTag;
++  if (tag.beforeCount > 0) {
++    if (tag.afterCount > 0) {
++      insertTag = "interpreter-between";
+     } else {
+-      if (tag.afterCount > 0) {
+-        insertTag = "interpreter-before";
+-      } else {
+-        insertTag = "interpreter";
+-      }
++      insertTag = "interpreter-after";
++    }
++  } else {
++    if (tag.afterCount > 0) {
++      insertTag = "interpreter-before";
++    } else {
++      insertTag = "interpreter";
+     }
++  }
+ 
+-    if (snippet.contextBefore.isNotEmpty) buffer.writeln();
+-    buffer.write("<$insertTag>");
++  if (snippet.contextBefore.isNotEmpty) buffer.writeln();
++  buffer.write("<$insertTag>");
+ 
+-    var code = formatCode(snippet.file.language, snippet.added, Format.print);
+-    // Discard the trailing newline so we don't end up with a blank paragraph
+-    // in InDesign.
+-    code = code.trimTrailingNewline();
++  var code = formatCode(snippet.file.language, snippet.added, Format.print);
++  // Discard the trailing newline so we don't end up with a blank paragraph
++  // in InDesign.
++  code = code.trimTrailingNewline();
+ 
+-    // Replace newlines with soft breaks so that InDesign treats the entire
+-    // snippet as a single paragraph and keeps it together.
+-    code = code.replaceAll("\n", "&#x2028;");
++  // Replace newlines with soft breaks so that InDesign treats the entire
++  // snippet as a single paragraph and keeps it together.
++  code = code.replaceAll("\n", "&#x2028;");
+ 
+-    buffer.write(code);
+-    buffer.write("</$insertTag>");
+-  }
++  buffer.write(code);
++  buffer.write("</$insertTag>");
+ 
+   if (snippet.contextAfter.isNotEmpty) {
+     buffer.writeln();
+@@ -254,7 +241,7 @@ String _buildSnippetXml(CodeTag tag, Snippet snippet) {
+ void _writeContextHtml(Format format, StringBuffer buffer, List<String> lines,
+     {String cssClass}) {
+   buffer.write("<pre");
+-  if (cssClass != null) buffer.write(' class="$cssClass"');
++  buffer.write(' class="$cssClass"');
+   buffer.write(">");
+ 
+   // The HTML spec mandates that a leading newline after '<pre>' is ignored.
+diff --git a/tool/lib/src/markdown/xml_renderer.dart b/tool/lib/src/markdown/xml_renderer.dart
+index 351a4b33..d86350e1 100644
+--- a/tool/lib/src/markdown/xml_renderer.dart
++++ b/tool/lib/src/markdown/xml_renderer.dart
+@@ -376,7 +376,7 @@ class _Context {
+   }
+ 
+   /// Whether [parent] has [name].
+-  bool isIn(String name) => parent != null && parent.has(name);
++  bool isIn(String name) => parent.has(name);
+ 
+   /// How many levels of list nesting this context contains.
+   int get listDepth {
+@@ -460,7 +460,6 @@ class _Context {
+   }
+ 
+   String toString() {
+-    if (parent == null) return name;
+     return "$parent > $name";
+   }
+ }
+@@ -500,7 +499,7 @@ class _Paragraph {
+     var buffer = StringBuffer();
+     var tag = context.paragraphTag;
+ 
+-    if (previous != null && _isNext(tag, previous.context.paragraphTag)) {
++    if (_isNext(tag, previous.context.paragraphTag)) {
+       tag += "-next";
+     }
+ 
+@@ -528,11 +527,6 @@ class _Inline {
+   bool get isText => tag == null;
+ 
+   void prettyPrint(StringBuffer buffer, _Context context) {
+-    if (tag == null) {
+-      buffer.write(text);
+-      return;
+-    }
+-
+     var fullTag = tag;
+     var prefix = context.inlinePrefix;
+     if (prefix != "") fullTag = "$prefix-$fullTag";
+diff --git a/tool/lib/src/mustache.dart b/tool/lib/src/mustache.dart
+index 2a8bace6..d9af16a2 100644
+--- a/tool/lib/src/mustache.dart
++++ b/tool/lib/src/mustache.dart
+@@ -19,21 +19,17 @@ class Mustache {
+       : _templateDirectory = templateDirectory ?? p.join("asset", "mustache");
+ 
+   String render(Book book, Page page, String body, {String template}) {
+-    var part = page.part?.title;
++    var part = page.part.title;
+ 
+     var up = "Table of Contents";
+-    if (part != null) {
+-      up = part;
+-    } else if (page.title == "Table of Contents") {
+-      up = "Crafting Interpreters";
+-    }
+-
++    up = part;
++
+     var previousPage = book.adjacentPage(page, -1);
+     var nextPage = book.adjacentPage(page, 1);
+     String nextType;
+-    if (nextPage != null && nextPage.isChapter) {
++    if (nextPage.isChapter) {
+       nextType = "Chapter";
+-    } else if (nextPage != null && nextPage.isPart) {
++    } else if (nextPage.isPart) {
+       nextType = "Part";
+     }
+ 
+@@ -49,7 +45,7 @@ class Mustache {
+ 
+     var data = <String, dynamic>{
+       "is_chapter": part != null,
+-      "is_part": part == null && page.title != null && !isFrontmatter,
++      "is_part": part == null && !isFrontmatter,
+       "is_frontmatter": isFrontmatter,
+       "title": page.title,
+       "part": part,
+@@ -65,12 +61,12 @@ class Mustache {
+       "number": page.numberString,
+       // Previous page.
+       "has_prev": previousPage != null,
+-      "prev": previousPage?.title,
+-      "prev_file": previousPage?.fileName,
++      "prev": previousPage.title,
++      "prev_file": previousPage.fileName,
+       // Next page.
+       "has_next": nextPage != null,
+-      "next": nextPage?.title,
+-      "next_file": nextPage?.fileName,
++      "next": nextPage.title,
++      "next_file": nextPage.fileName,
+       "next_type": nextType,
+       "has_up": up != null,
+       "up": up,
+@@ -101,7 +97,7 @@ class Mustache {
+           "title": chapter.title,
+           "number": chapter.numberString,
+           "file": chapter.fileName,
+-          "design_note": chapter.designNote?.replaceAll("'", "&rsquo;"),
++          "design_note": chapter.designNote.replaceAll("'", "&rsquo;"),
+         }
+     ];
+   }
+diff --git a/tool/lib/src/page_parser.dart b/tool/lib/src/page_parser.dart
+index 1755beff..3c689539 100644
+--- a/tool/lib/src/page_parser.dart
++++ b/tool/lib/src/page_parser.dart
+@@ -79,27 +79,25 @@ CodeTag _createCodeTag(Page page, int index, String name, String options) {
+   var beforeCount = 0;
+   var afterCount = 0;
+ 
+-  if (options != null) {
+-    for (var option in options.split(", ")) {
+-      if (option == "no location") {
+-        showLocation = false;
+-        continue;
+-      }
+-
+-      var match = _beforePattern.firstMatch(option);
+-      if (match != null) {
+-        beforeCount = int.parse(match[1]);
+-        continue;
+-      }
++  for (var option in options.split(", ")) {
++    if (option == "no location") {
++      showLocation = false;
++      continue;
++    }
+ 
+-      match = _afterPattern.firstMatch(option);
+-      if (match != null) {
+-        afterCount = int.parse(match[1]);
+-        continue;
+-      }
++    var match = _beforePattern.firstMatch(option);
++    if (match != null) {
++      beforeCount = int.parse(match[1]);
++      continue;
++    }
+ 
+-      throw "Unknown code option '$option'";
++    match = _afterPattern.firstMatch(option);
++    if (match != null) {
++      afterCount = int.parse(match[1]);
++      continue;
+     }
++
++    throw "Unknown code option '$option'";
+   }
+ 
+   return CodeTag(page, name, index, beforeCount, afterCount, showLocation);
+diff --git a/tool/lib/src/snippet.dart b/tool/lib/src/snippet.dart
+index 0e2d3865..d1e170d6 100644
+--- a/tool/lib/src/snippet.dart
++++ b/tool/lib/src/snippet.dart
+@@ -53,7 +53,7 @@ class Snippet {
+     var result = ["<em>${file.nicePath}</em>"];
+ 
+     var html = _location.toHtml(precedingLocation, removed);
+-    if (html != null) result.add(html);
++    result.add(html);
+ 
+     if (removed.isNotEmpty && added.isNotEmpty) {
+       result.add("replace ${removed.length} line${pluralize(removed)}");
+@@ -61,10 +61,8 @@ class Snippet {
+       result.add("remove ${removed.length} line${pluralize(removed)}");
+     }
+ 
+-    if (addedComma != null) {
+-      result.add("add <em>&ldquo;,&rdquo;</em> to previous line");
+-    }
+-
++    result.add("add <em>&ldquo;,&rdquo;</em> to previous line");
++
+     return result;
+   }
+ 
+@@ -75,13 +73,12 @@ class Snippet {
+ 
+     var xml = _location.toXml(precedingLocation, removed);
+     var changes = [
+-      if (xml != null) xml,
++      xml,
+       if (removed.isNotEmpty && added.isNotEmpty)
+         "replace ${removed.length} line${pluralize(removed)}"
+       else if (removed.isNotEmpty && added.isEmpty)
+         "remove ${removed.length} line${pluralize(removed)}",
+-      if (addedComma != null)
+-        "add <location-comma>&ldquo;,&rdquo;</location-comma> to previous line"
++      "add <location-comma>&ldquo;,&rdquo;</location-comma> to previous line"
+     ].map((change) => "<location-change>$change</location-change>");
+ 
+     if (changes.isNotEmpty) {
+@@ -123,8 +120,7 @@ class Snippet {
+       checkedLines++;
+ 
+       // Store the most precise preceding location we find.
+-      if (_precedingLocation == null ||
+-          line.location.depth > _precedingLocation.depth) {
++      if (line.location.depth > _precedingLocation.depth) {
+         _precedingLocation = line.location;
+       }
+     }
+diff --git a/tool/lib/src/source_file_parser.dart b/tool/lib/src/source_file_parser.dart
+index f1801ef8..60c688ef 100644
+--- a/tool/lib/src/source_file_parser.dart
++++ b/tool/lib/src/source_file_parser.dart
+@@ -173,7 +173,7 @@ class SourceFileParser {
+     var match = _typedefNamePattern.firstMatch(line);
+     if (match != null) {
+       // Now we know the typedef name.
+-      _unnamedTypedef?.name = match[1];
++      _unnamedTypedef.name = match[1];
+       _unnamedTypedef = null;
+       _location = _location.parent;
+     }
+@@ -226,7 +226,7 @@ class SourceFileParser {
+       return true;
+     }
+ 
+-    if (line.trim() == "*/" && _currentState.end != null) {
++    if (line.trim() == "*/") {
+       _location = _locationBeforeBlock;
+       _pop();
+       return true;
+@@ -298,17 +298,11 @@ class SourceFileParser {
+     startChapter ??= _currentState.start.chapter;
+ 
+     CodeTag start;
+-    if (startName != null) {
+-      start = startChapter.findCodeTag(startName);
+-    } else {
+-      start = _currentState.start;
+-    }
+-
++    start = startChapter.findCodeTag(startName);
++
+     CodeTag end;
+-    if (endChapter != null) {
+-      end = endChapter.findCodeTag(endName);
+-    }
+-
++    end = endChapter.findCodeTag(endName);
++
+     _states.add(_ParseState(start, end));
+   }
+ 
+@@ -324,7 +318,7 @@ class _ParseState {
+   _ParseState(this.start, [this.end]);
+ 
+   String toString() {
+-    if (end != null) return "_ParseState($start > $end)";
++    return "_ParseState($start > $end)";
+     return "_ParseState($start)";
+   }
+ }
+diff --git a/tool/lib/src/split_chapter.dart b/tool/lib/src/split_chapter.dart
+index 1eca0694..30cbf0c8 100644
+--- a/tool/lib/src/split_chapter.dart
++++ b/tool/lib/src/split_chapter.dart
+@@ -32,9 +32,7 @@ Future<void> _splitSourceFile(Book book, Page chapter, String sourcePath,
+   if (relative == "com/craftinginterpreters/lox/Stmt.java") return;
+ 
+   var package = chapter.shortName;
+-  if (tag != null) {
+-    package = p.join("snippets", package, tag.directory);
+-  }
++  package = p.join("snippets", package, tag.directory);
+ 
+   // If we're generating the split for an entire chapter, include all its
+   // snippets.
+diff --git a/tool/lib/src/syntax/highlighter.dart b/tool/lib/src/syntax/highlighter.dart
+index 7ec8034c..c6476e34 100644
+--- a/tool/lib/src/syntax/highlighter.dart
++++ b/tool/lib/src/syntax/highlighter.dart
+@@ -46,7 +46,7 @@ class Highlighter {
+   String _highlight(List<String> lines, String preClass, int indent) {
+     if (!_format.isPrint) {
+       _buffer.write("<pre");
+-      if (preClass != null) _buffer.write(' class="$preClass"');
++      _buffer.write(' class="$preClass"');
+       _buffer.write(">");
+ 
+       // The HTML spec mandates that a leading newline after '<pre>' is ignored.
+diff --git a/tool/lib/src/syntax/language.dart b/tool/lib/src/syntax/language.dart
+index 212baca4..653619b9 100644
+--- a/tool/lib/src/syntax/language.dart
++++ b/tool/lib/src/syntax/language.dart
+@@ -7,7 +7,6 @@ class Language {
+ 
+   Language({String keywords, String types, List<Rule> this.rules}) {
+     keywordType(String wordList, String type) {
+-      if (wordList == null) return;
+       for (var word in wordList.split(" ")) {
+         words[word] = type;
+       }
+diff --git a/tool/lib/src/term.dart b/tool/lib/src/term.dart
+index ec31b09a..fe4b9705 100644
+--- a/tool/lib/src/term.dart
++++ b/tool/lib/src/term.dart
+@@ -27,9 +27,9 @@ void clearLine() {
+   }
+ }
+ 
+-void writeLine([String line]) {
++void writeLine([String line = ""]) {
+   clearLine();
+-  if (line != null) stdout.write(line);
++  stdout.write(line);
+ }
+ 
+ bool get _allowAnsi =>
+diff --git a/tool/pubspec.lock b/tool/pubspec.lock
+index 102521d9..96c3a851 100644
+--- a/tool/pubspec.lock
++++ b/tool/pubspec.lock
+@@ -5,281 +5,321 @@ packages:
+     dependency: transitive
+     description:
+       name: archive
+-      url: "https://pub.dartlang.org"
++      sha256: "2fde1607386ab523f7a36bb3e7edb43bd58e6edaf2ffb29d8a6d578b297fdbbd"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "2.0.13"
++    version: "4.0.7"
+   args:
+     dependency: "direct main"
+     description:
+       name: args
+-      url: "https://pub.dartlang.org"
++      sha256: d0481093c50b1da8910eb0bb301626d4d8eb7284aa739614d2b394ee09e3ea04
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.6.0"
++    version: "2.7.0"
+   async:
+     dependency: transitive
+     description:
+       name: async
+-      url: "https://pub.dartlang.org"
++      sha256: "758e6d74e971c3e5aceb4110bfd6698efc7f501675bcfe0c775459a8140750eb"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "2.4.1"
++    version: "2.13.0"
+   charcode:
+     dependency: "direct main"
+     description:
+       name: charcode
+-      url: "https://pub.dartlang.org"
++      sha256: fb0f1107cac15a5ea6ef0a6ef71a807b9e4267c713bb93e00e92d737cc8dbd8a
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.1.3"
++    version: "1.4.0"
+   cli_repl:
+     dependency: transitive
+     description:
+       name: cli_repl
+-      url: "https://pub.dartlang.org"
++      sha256: a2ee06d98f211cb960c777519cb3d14e882acd90fe5e078668e3ab4baab0ddd4
++      url: "https://pub.dev"
+     source: hosted
+-    version: "0.2.0+1"
++    version: "0.2.3"
+   collection:
+     dependency: transitive
+     description:
+       name: collection
+-      url: "https://pub.dartlang.org"
++      sha256: "2f5709ae4d3d59dd8f7cd309b4e023046b57d8a6c82130785d2b0e5868084e76"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.14.12"
+-  convert:
++    version: "1.19.1"
++  crypto:
+     dependency: transitive
+     description:
+-      name: convert
+-      url: "https://pub.dartlang.org"
++      name: crypto
++      sha256: "1e445881f28f22d6140f181e07737b22f1e099a5e1ff94b0af2f9e4a463f4855"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "2.1.1"
+-  crypto:
++    version: "3.0.6"
++  ffi:
+     dependency: transitive
+     description:
+-      name: crypto
+-      url: "https://pub.dartlang.org"
++      name: ffi
++      sha256: "289279317b4b16eb2bb7e271abccd4bf84ec9bdcbe999e278a94b804f5630418"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "2.1.5"
++    version: "2.1.4"
++  file:
++    dependency: transitive
++    description:
++      name: file
++      sha256: a3b4f84adafef897088c160faf7dfffb7696046cb13ae90b508c2cbc95d3b8d4
++      url: "https://pub.dev"
++    source: hosted
++    version: "7.0.1"
++  fixnum:
++    dependency: transitive
++    description:
++      name: fixnum
++      sha256: b6dc7065e46c974bc7c5f143080a6764ec7a4be6da1285ececdc37be96de53be
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.1.1"
+   glob:
+     dependency: "direct main"
+     description:
+       name: glob
+-      url: "https://pub.dartlang.org"
++      sha256: c3f1ee72c96f8f78935e18aa8cecced9ab132419e8625dc187e1c2408efc20de
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.2.0"
++    version: "2.1.3"
+   http:
+     dependency: transitive
+     description:
+       name: http
+-      url: "https://pub.dartlang.org"
++      sha256: fe7ab022b76f3034adc518fb6ea04a82387620e19977665ea18d30a1cf43442f
++      url: "https://pub.dev"
+     source: hosted
+-    version: "0.12.1"
++    version: "1.3.0"
+   http_parser:
+     dependency: transitive
+     description:
+       name: http_parser
+-      url: "https://pub.dartlang.org"
++      sha256: "178d74305e7866013777bab2c3d8726205dc5a4dd935297175b19a23a2e66571"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "3.1.4"
++    version: "4.1.2"
+   image:
+     dependency: "direct main"
+     description:
+       name: image
+-      url: "https://pub.dartlang.org"
++      sha256: "4e973fcf4caae1a4be2fa0a13157aa38a8f9cb049db6529aa00b4d71abc4d928"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "2.1.19"
++    version: "4.5.4"
+   js:
+     dependency: transitive
+     description:
+       name: js
+-      url: "https://pub.dartlang.org"
++      sha256: f2c445dce49627136094980615a031419f7f3eb393237e4ecd97ac15dea343f3
++      url: "https://pub.dev"
+     source: hosted
+-    version: "0.6.1+1"
++    version: "0.6.7"
+   markdown:
+     dependency: "direct main"
+     description:
+       name: markdown
+-      url: "https://pub.dartlang.org"
+-    source: hosted
+-    version: "2.1.3"
+-  matcher:
+-    dependency: transitive
+-    description:
+-      name: matcher
+-      url: "https://pub.dartlang.org"
++      sha256: "935e23e1ff3bc02d390bad4d4be001208ee92cc217cb5b5a6c19bc14aaa318c1"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "0.12.6"
++    version: "7.3.0"
+   meta:
+     dependency: transitive
+     description:
+       name: meta
+-      url: "https://pub.dartlang.org"
++      sha256: e3641ec5d63ebf0d9b41bd43201a66e3fc79a65db5f61fc181f04cd27aab950c
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.1.8"
++    version: "1.16.0"
+   mime_type:
+     dependency: "direct main"
+     description:
+       name: mime_type
+-      url: "https://pub.dartlang.org"
++      sha256: d652b613e84dac1af28030a9fba82c0999be05b98163f9e18a0849c6e63838bb
++      url: "https://pub.dev"
+     source: hosted
+-    version: "0.3.0"
++    version: "1.0.1"
+   mustache_template:
+     dependency: "direct main"
+     description:
+       name: mustache_template
+-      url: "https://pub.dartlang.org"
++      sha256: a46e26f91445bfb0b60519be280555b06792460b27b19e2b19ad5b9740df5d1c
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.0.0+1"
++    version: "2.0.0"
+   node_interop:
+     dependency: transitive
+     description:
+       name: node_interop
+-      url: "https://pub.dartlang.org"
++      sha256: "4848ac408c0cdd0f70136b755df816a8e4c96c244e5377a3fb3b8f8950666150"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.1.1"
+-  node_io:
+-    dependency: transitive
+-    description:
+-      name: node_io
+-      url: "https://pub.dartlang.org"
+-    source: hosted
+-    version: "1.1.1"
++    version: "2.2.0"
+   package_config:
+     dependency: transitive
+     description:
+       name: package_config
+-      url: "https://pub.dartlang.org"
++      sha256: f096c55ebb7deb7e384101542bfba8c52696c1b56fca2eb62827989ef2353bbc
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.9.3"
+-  package_resolver:
+-    dependency: transitive
+-    description:
+-      name: package_resolver
+-      url: "https://pub.dartlang.org"
+-    source: hosted
+-    version: "1.0.10"
++    version: "2.2.0"
+   path:
+     dependency: "direct main"
+     description:
+       name: path
+-      url: "https://pub.dartlang.org"
+-    source: hosted
+-    version: "1.7.0"
+-  pedantic:
+-    dependency: transitive
+-    description:
+-      name: pedantic
+-      url: "https://pub.dartlang.org"
++      sha256: "75cca69d1490965be98c73ceaea117e8a04dd21217b37b292c9ddbec0d955bc5"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.9.0"
++    version: "1.9.1"
+   petitparser:
+     dependency: transitive
+     description:
+       name: petitparser
+-      url: "https://pub.dartlang.org"
++      sha256: "07c8f0b1913bcde1ff0d26e57ace2f3012ccbf2b204e070290dad3bb22797646"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "3.0.4"
++    version: "6.1.0"
+   pool:
+     dependency: "direct main"
+     description:
+       name: pool
+-      url: "https://pub.dartlang.org"
++      sha256: "20fe868b6314b322ea036ba325e6fc0711a22948856475e2c2b6306e8ab39c2a"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.4.0"
+-  quiver:
++    version: "1.5.1"
++  posix:
+     dependency: transitive
+     description:
+-      name: quiver
+-      url: "https://pub.dartlang.org"
++      name: posix
++      sha256: f0d7856b6ca1887cfa6d1d394056a296ae33489db914e365e2044fdada449e62
++      url: "https://pub.dev"
+     source: hosted
+-    version: "2.1.3"
++    version: "6.0.2"
++  protobuf:
++    dependency: transitive
++    description:
++      name: protobuf
++      sha256: "68645b24e0716782e58948f8467fd42a880f255096a821f9e7d0ec625b00c84d"
++      url: "https://pub.dev"
++    source: hosted
++    version: "3.1.0"
++  pub_semver:
++    dependency: transitive
++    description:
++      name: pub_semver
++      sha256: "5bfcf68ca79ef689f8990d1160781b4bad40a3bd5e5218ad4076ddb7f4081585"
++      url: "https://pub.dev"
++    source: hosted
++    version: "2.2.0"
+   sass:
+     dependency: "direct main"
+     description:
+       name: sass
+-      url: "https://pub.dartlang.org"
++      sha256: "341b33ebcb8fe3ed6c793bcfe1d01edd886bc58d68ff3febf29c0b391ac24296"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.26.5"
++    version: "1.66.0"
+   shelf:
+     dependency: "direct main"
+     description:
+       name: shelf
+-      url: "https://pub.dartlang.org"
++      sha256: e7dd780a7ffb623c57850b33f43309312fc863fb6aa3d276a754bb299839ef12
++      url: "https://pub.dev"
+     source: hosted
+-    version: "0.7.5"
++    version: "1.4.2"
+   source_maps:
+     dependency: transitive
+     description:
+       name: source_maps
+-      url: "https://pub.dartlang.org"
++      sha256: "190222579a448b03896e0ca6eca5998fa810fda630c1d65e2f78b3f638f54812"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "0.10.9"
++    version: "0.10.13"
+   source_span:
+     dependency: transitive
+     description:
+       name: source_span
+-      url: "https://pub.dartlang.org"
++      sha256: "254ee5351d6cb365c859e20ee823c3bb479bf4a293c22d17a9f1bf144ce86f7c"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.7.0"
++    version: "1.10.1"
+   stack_trace:
+     dependency: transitive
+     description:
+       name: stack_trace
+-      url: "https://pub.dartlang.org"
++      sha256: "8b27215b45d22309b5cddda1aa2b19bdfec9df0e765f2de506401c071d38d1b1"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.9.3"
++    version: "1.12.1"
+   stream_channel:
+     dependency: transitive
+     description:
+       name: stream_channel
+-      url: "https://pub.dartlang.org"
++      sha256: "969e04c80b8bcdf826f8f16579c7b14d780458bd97f56d107d3950fdbeef059d"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "2.0.0"
++    version: "2.1.4"
+   stream_transform:
+     dependency: transitive
+     description:
+       name: stream_transform
+-      url: "https://pub.dartlang.org"
++      sha256: ad47125e588cfd37a9a7f86c7d6356dde8dfe89d071d293f80ca9e9273a33871
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.2.0"
++    version: "2.1.1"
+   string_scanner:
+     dependency: "direct main"
+     description:
+       name: string_scanner
+-      url: "https://pub.dartlang.org"
++      sha256: "921cd31725b72fe181906c6a94d987c78e3b98c2e205b397ea399d4054872b43"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.0.5"
++    version: "1.4.1"
+   term_glyph:
+     dependency: transitive
+     description:
+       name: term_glyph
+-      url: "https://pub.dartlang.org"
+-    source: hosted
+-    version: "1.1.0"
+-  tuple:
+-    dependency: transitive
+-    description:
+-      name: tuple
+-      url: "https://pub.dartlang.org"
++      sha256: "7f554798625ea768a7518313e58f83891c7f5024f88e46e7182a4558850a4b8e"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.0.3"
++    version: "1.2.2"
+   typed_data:
+     dependency: transitive
+     description:
+       name: typed_data
+-      url: "https://pub.dartlang.org"
++      sha256: f9049c039ebfeb4cf7a7104a675823cd72dba8297f264b6637062516699fa006
++      url: "https://pub.dev"
+     source: hosted
+-    version: "1.1.6"
++    version: "1.4.0"
+   watcher:
+     dependency: transitive
+     description:
+       name: watcher
+-      url: "https://pub.dartlang.org"
++      sha256: "69da27e49efa56a15f8afe8f4438c4ec02eff0a117df1b22ea4aad194fe1c104"
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.1.1"
++  web:
++    dependency: transitive
++    description:
++      name: web
++      sha256: "868d88a33d8a87b18ffc05f9f030ba328ffefba92d6c127917a2ba740f9cfe4a"
++      url: "https://pub.dev"
+     source: hosted
+-    version: "0.9.7+15"
++    version: "1.1.1"
+   xml:
+     dependency: transitive
+     description:
+       name: xml
+-      url: "https://pub.dartlang.org"
++      sha256: b015a8ad1c488f66851d762d3090a21c600e479dc75e68328c52774040cf9226
++      url: "https://pub.dev"
+     source: hosted
+-    version: "4.5.1"
++    version: "6.5.0"
+ sdks:
+-  dart: ">2.11.0 <3.0.0"
++  dart: ">=3.7.0 <4.0.0"
+diff --git a/tool/pubspec.yaml b/tool/pubspec.yaml
+index 634f3e7f..af99e7b2 100644
+--- a/tool/pubspec.yaml
++++ b/tool/pubspec.yaml
+@@ -1,17 +1,17 @@
+ name: tool
+ publish_to: none
+ environment:
+-  sdk: '>2.11.0 <3.0.0'
++  sdk: '>3.0.0 <4.0.0'
+ dependencies:
+-  args: ^1.6.0
++  args: ^2.7.0
+   charcode: ^1.1.3
+-  glob: ^1.2.0
+-  image: ^2.1.19
+-  markdown: ^2.1.3
+-  mime_type: ^0.3.0
+-  mustache_template: ^1.0.0
++  glob: ^2.1.3
++  image: ^4.5.4
++  markdown: ^7.3.0
++  mime_type: ^1.0.1
++  mustache_template: ^2.0.0
+   path: ^1.7.0
+   pool: ^1.4.0
+   sass: ^1.26.5
+-  shelf: ^0.7.5
++  shelf: ^1.4.2
+   string_scanner: ^1.0.5

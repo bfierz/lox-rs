@@ -26,3 +26,18 @@ jobs:
         pushd loxrun
         cargo test --verbose
         popd
+    - name: Install Dart
+      run: |
+        bash ${GITHUB_WORKSPACE}/scripts/post_setup.sh
+    - name: Run verification
+      run: |
+        git clone https://github.com/munificent/craftinginterpreters.git verification/testsuite
+        pushd verification/testsuite
+        git apply ../dart-upgrade.patch
+        pushd tool
+        dart pub get
+        popd
+        dart tool/bin/test.dart chap08_statements -i ../../loxrun/target/debug/loxrun
+        dart tool/bin/test.dart chap09_control -i ../../loxrun/target/debug/loxrun
+        dart tool/bin/test.dart chap10_functions -i ../../loxrun/target/debug/loxrun
+        popd

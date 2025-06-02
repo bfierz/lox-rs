@@ -1,4 +1,6 @@
-use crate::callable::{Callable, LoxCallable, LoxFunction};
+use crate::callable::{
+    Callable, LoxBuiltinFunctionClock, LoxCallable, LoxDynamicFunction, LoxFunction,
+};
 use crate::expression::{Binary, Call, Expression, Grouping, Literal, Logical, Unary};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
@@ -36,7 +38,7 @@ impl Value {
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Callable(_) => write!(f, "<function>"),
+            Value::Callable(c) => write!(f, "{}", c),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
@@ -99,7 +101,10 @@ impl Environment {
         match &self.enclosing {
             Some(enclosing) => enclosing.borrow_mut().assign(name, value),
             None => Err(InterpreterError {
-                message: format!("Undefined variable '{}'", name.lexeme),
+                message: format!(
+                    "Undefined variable '{}'.\n[line {}]",
+                    name.lexeme, name.line
+                ),
             }),
         }
     }
@@ -129,10 +134,12 @@ pub struct Interpreter {
 impl Interpreter {
     pub fn new() -> Self {
         let globals = Rc::new(RefCell::new(Environment::new()));
-        //globals.borrow_mut().define(
-        //    "clock".to_string(),
-        //    Value::Callable(LoxBuiltinFunctionClock::new()),
-        //);
+        globals.borrow_mut().define(
+            "clock".to_string(),
+            Value::Callable(Callable::DynamicFunction(LoxDynamicFunction {
+                callable: Rc::new(RefCell::new(Box::new(LoxBuiltinFunctionClock::new()))),
+            })),
+        );
         Interpreter {
             globals: Rc::clone(&globals),
             environment: globals,
@@ -204,10 +211,14 @@ impl Interpreter {
             }
             Stmt::While(while_stmt) => {
                 while self.expression(&*while_stmt.condition)?.is_true() {
-                    if let Ok(InterpreterResult::Return(value)) =
-                        self.execute_statement(&*while_stmt.body)
-                    {
-                        return Ok(InterpreterResult::Return(value));
+                    match self.execute_statement(&*while_stmt.body) {
+                        Err(e) => {
+                            return Err(e);
+                        }
+                        Ok(InterpreterResult::Return(value)) => {
+                            return Ok(InterpreterResult::Return(value));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -226,9 +237,16 @@ impl Interpreter {
 
         let mut result = InterpreterResult::None;
         for statement in statements {
-            if let Ok(InterpreterResult::Return(value)) = self.execute_statement(statement) {
-                result = InterpreterResult::Return(value);
-                break;
+            match self.execute_statement(statement) {
+                Err(e) => {
+                    self.environment = previous;
+                    return Err(e);
+                }
+                Ok(InterpreterResult::Return(value)) => {
+                    result = InterpreterResult::Return(value);
+                    break;
+                }
+                _ => {}
             }
         }
         self.environment = previous;
@@ -246,7 +264,10 @@ impl Interpreter {
             Expression::Variable(variable) => match self.environment.borrow().get(&variable.name) {
                 Some(value) => Ok(value.clone()),
                 None => Err(InterpreterError {
-                    message: format!("Variable {} not found", variable.name.lexeme),
+                    message: format!(
+                        "Undefined variable '{}'.\n[line {}]",
+                        variable.name.lexeme, variable.name.line
+                    ),
                 }),
             },
             Expression::Assign(assign) => {
@@ -262,29 +283,49 @@ impl Interpreter {
     fn call(&mut self, call: &Call) -> Result<Value, InterpreterError> {
         let callee = self.expression(&*call.callee)?;
         if let Value::Callable(callable) = &callee {
-            if let Callable::Function(func) = callable {
-                let mut arguments = Vec::new();
-                for arg in &call.arguments {
-                    arguments.push(self.expression(arg)?);
+            match callable {
+                Callable::DynamicFunction(func) => {
+                    let mut arguments = Vec::new();
+                    for arg in &call.arguments {
+                        arguments.push(self.expression(arg)?);
+                    }
+                    let arity = func.callable.borrow().as_ref().arity();
+                    if arguments.len() != arity {
+                        return Err(InterpreterError {
+                            message: format!(
+                                "Expected {} arguments but got {}.\n[line {}]",
+                                arity,
+                                arguments.len(),
+                                call.paren.line
+                            ),
+                        });
+                    }
+                    func.callable.borrow().as_ref().call(self, arguments)
                 }
-                if arguments.len() != func.arity() {
-                    return Err(InterpreterError {
-                        message: format!(
-                            "Expected {} arguments but got {}",
-                            func.arity(),
-                            arguments.len()
-                        ),
-                    });
+                Callable::Function(func) => {
+                    let mut arguments = Vec::new();
+                    for arg in &call.arguments {
+                        arguments.push(self.expression(arg)?);
+                    }
+                    if arguments.len() != func.arity() {
+                        return Err(InterpreterError {
+                            message: format!(
+                                "Expected {} arguments but got {}.\n[line {}]",
+                                func.arity(),
+                                arguments.len(),
+                                call.paren.line
+                            ),
+                        });
+                    }
+                    func.call(self, arguments)
                 }
-                func.call(self, arguments)
-            } else {
-                return Err(InterpreterError {
-                    message: "Can only call functions".to_string(),
-                });
             }
         } else {
             return Err(InterpreterError {
-                message: "Can only call functions".to_string(),
+                message: format!(
+                    "Can only call functions and classes.\n[line {}]",
+                    call.paren.line
+                ),
             });
         }
     }
@@ -323,18 +364,19 @@ impl Interpreter {
             TokenType::Bang => match right {
                 Value::Bool(value) => Ok(Value::Bool(!value)),
                 Value::Nil => Ok(Value::Bool(true)),
-                _ => Err(InterpreterError {
-                    message: "Operand must be a boolean".to_string(),
-                }),
+                _ => Ok(Value::Bool(false)),
             },
             TokenType::Minus => match right {
                 Value::Number(value) => Ok(Value::Number(-value)),
                 _ => Err(InterpreterError {
-                    message: "Operand must be a number".to_string(),
+                    message: format!("Operand must be a number.\n[line {}]", unary.operator.line),
                 }),
             },
             _ => Err(InterpreterError {
-                message: "Invalid operator".to_string(),
+                message: format!(
+                    "Invalid operator '{}'.\n[line {}]",
+                    unary.operator.lexeme, unary.operator.line
+                ),
             }),
         }
     }
@@ -347,19 +389,19 @@ impl Interpreter {
             TokenType::Minus => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left - right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::Slash => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left / right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::Star => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Number(left * right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::Plus => match (left, right) {
@@ -368,31 +410,34 @@ impl Interpreter {
                     Ok(Value::String(format!("{}{}", left, right)))
                 }
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers or strings".to_string(),
+                    message: format!(
+                        "Operands must be two numbers or two strings.\n[line {}]",
+                        binary.operator.line
+                    ),
                 }),
             },
             TokenType::Greater => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left > right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::GreaterEqual => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left >= right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::Less => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left < right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::LessEqual => match (left, right) {
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left <= right)),
                 _ => Err(InterpreterError {
-                    message: "Operands must be numbers".to_string(),
+                    message: format!("Operands must be numbers.\n[line {}]", binary.operator.line),
                 }),
             },
             TokenType::BangEqual => match (left, right) {
@@ -400,21 +445,17 @@ impl Interpreter {
                 (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left != right)),
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left != right)),
                 (Value::String(left), Value::String(right)) => Ok(Value::Bool(left != right)),
-                _ => Err(InterpreterError {
-                    message: "Operands must be of the same type".to_string(),
-                }),
+                _ => Ok(Value::Bool(true)),
             },
             TokenType::EqualEqual => match (left, right) {
                 (Value::Nil, Value::Nil) => Ok(Value::Bool(true)),
                 (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left == right)),
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left == right)),
                 (Value::String(left), Value::String(right)) => Ok(Value::Bool(left == right)),
-                _ => Err(InterpreterError {
-                    message: "Operands must be of the same type".to_string(),
-                }),
+                _ => Ok(Value::Bool(false)),
             },
             _ => Err(InterpreterError {
-                message: "Invalid operator".to_string(),
+                message: "Invalid operator.".to_string(),
             }),
         }
     }
@@ -684,7 +725,10 @@ mod tests {
 
         let result = run(source);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().message, "Variable a not found");
+        assert_eq!(
+            result.unwrap_err().message,
+            "Undefined variable 'a'.\n[line 2]"
+        );
     }
 
     #[test]
@@ -729,7 +773,10 @@ mod tests {
 
         let result = run(source);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().message, "Variable a not found");
+        assert_eq!(
+            result.unwrap_err().message,
+            "Undefined variable 'a'.\n[line 6]"
+        );
     }
 
     #[test]
@@ -950,6 +997,24 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Hello, World!\n");
+    }
+
+    #[test]
+    fn test_function_definition_and_call_with_return_from_loop() {
+        let source = "
+        fun bar() {
+            for (var i = 0;; i = i + 1) {
+                print i;
+                if (i >= 2) return;
+            }
+        }
+        bar();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "0\n1\n2\n");
     }
 
     #[test]
