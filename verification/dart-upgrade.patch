@@ -245,7 +245,7 @@ index b01bf533..2b213cb7 100644
 +          var endSnippet = _snippets.putIfAbsent(
 +              line.end, () => Snippet(sourceFile, line.end));
 +          endSnippet.removeLine(lineIndex, line);
-+        
++
            lineIndex++;
          }
        }
@@ -526,7 +526,7 @@ index 2a8bace6..d9af16a2 100644
 -    }
 -
 +    up = part;
-+  
++
      var previousPage = book.adjacentPage(page, -1);
      var nextPage = book.adjacentPage(page, 1);
      String nextType;
@@ -643,7 +643,7 @@ index 0e2d3865..d1e170d6 100644
 -    }
 -
 +    result.add("add <em>&ldquo;,&rdquo;</em> to previous line");
-+  
++
      return result;
    }
  
@@ -706,14 +706,14 @@ index f1801ef8..60c688ef 100644
 -    }
 -
 +    start = startChapter.findCodeTag(startName);
-+  
++
      CodeTag end;
 -    if (endChapter != null) {
 -      end = endChapter.findCodeTag(endName);
 -    }
 -
 +    end = endChapter.findCodeTag(endName);
-+  
++
      _states.add(_ParseState(start, end));
    }
  
