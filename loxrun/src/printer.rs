@@ -88,15 +88,20 @@ mod tests {
     #[test]
     fn test_pretty_print() {
         let expr = Expression::Binary(Binary {
+            id: 0,
             left: Box::new(Expression::Unary(Unary {
+                id: 1,
                 operator: Token::new(TokenType::Minus, "-".to_string(), LiteralTypes::Nil, 1),
                 right: Box::new(Expression::Literal(Literal {
+                    id: 2,
                     value: LiteralTypes::Number(123.0),
                 })),
             })),
             operator: Token::new(TokenType::Star, "*".to_string(), LiteralTypes::Nil, 1),
             right: Box::new(Expression::Grouping(Grouping {
+                id: 3,
                 expression: Box::new(Expression::Literal(Literal {
+                    id: 4,
                     value: LiteralTypes::Number(45.67),
                 })),
             })),
@@ -108,22 +113,29 @@ mod tests {
     #[test]
     fn test_rpn_print() {
         let expr = Expression::Binary(Binary {
+            id: 0,
             left: Box::new(Expression::Binary(Binary {
+                id: 1,
                 left: Box::new(Expression::Literal(Literal {
+                    id: 2,
                     value: LiteralTypes::Number(1.0),
                 })),
                 operator: Token::new(TokenType::Plus, "+".to_string(), LiteralTypes::Nil, 1),
                 right: Box::new(Expression::Literal(Literal {
+                    id: 3,
                     value: LiteralTypes::Number(2.0),
                 })),
             })),
             operator: Token::new(TokenType::Star, "*".to_string(), LiteralTypes::Nil, 1),
             right: Box::new(Expression::Binary(Binary {
+                id: 4,
                 left: Box::new(Expression::Literal(Literal {
+                    id: 5,
                     value: LiteralTypes::Number(4.0),
                 })),
                 operator: Token::new(TokenType::Minus, "-".to_string(), LiteralTypes::Nil, 1),
                 right: Box::new(Expression::Literal(Literal {
+                    id: 6,
                     value: LiteralTypes::Number(3.0),
                 })),
             })),

@@ -40,6 +40,7 @@ use crate::{
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    current_id: usize,
 }
 
 #[derive(Debug)]
@@ -49,7 +50,11 @@ pub struct ParserError {
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, current: 0 }
+        Parser {
+            tokens,
+            current: 0,
+            current_id: 0,
+        }
     }
 
     pub fn parse(&mut self) -> Result<Vec<Stmt>, ParserError> {
@@ -224,6 +229,7 @@ impl Parser {
         } else {
             body = Box::new(Stmt::While(WhileStmt {
                 condition: Box::new(Expression::Literal(Literal {
+                    id: self.next_id(),
                     value: LiteralTypes::Bool(true),
                 })),
                 body,
@@ -329,6 +335,7 @@ impl Parser {
             match expr {
                 Expression::Variable(ref var) => {
                     return Ok(Expression::Assign(Assign {
+                        id: self.next_id(),
                         name: var.name.clone(),
                         value: Box::new(value),
                     }));
@@ -354,6 +361,7 @@ impl Parser {
             let operator = self.previous().clone();
             let right = self.and()?;
             expr = Expression::Logical(Logical {
+                id: self.next_id(),
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
@@ -370,6 +378,7 @@ impl Parser {
             let operator = self.previous().clone();
             let right = self.equality()?;
             expr = Expression::Logical(Logical {
+                id: self.next_id(),
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
@@ -386,6 +395,7 @@ impl Parser {
             let operator = self.previous().clone();
             let right = self.comparison()?;
             expr = Expression::Binary(Binary {
+                id: self.next_id(),
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
@@ -407,6 +417,7 @@ impl Parser {
             let operator = self.previous().clone();
             let right = self.term()?;
             expr = Expression::Binary(Binary {
+                id: self.next_id(),
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
@@ -423,6 +434,7 @@ impl Parser {
             let operator = self.previous().clone();
             let right = self.factor()?;
             expr = Expression::Binary(Binary {
+                id: self.next_id(),
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
@@ -439,6 +451,7 @@ impl Parser {
             let operator = self.previous().clone();
             let right = self.unary()?;
             expr = Expression::Binary(Binary {
+                id: self.next_id(),
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
@@ -453,6 +466,7 @@ impl Parser {
             let operator = self.previous().clone();
             let right = self.unary()?;
             Ok(Expression::Unary(Unary {
+                id: self.next_id(),
                 operator,
                 right: Box::new(right),
             }))
@@ -497,6 +511,7 @@ impl Parser {
         }
         let paren = self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
         Ok(Expression::Call(Call {
+            id: self.next_id(),
             callee: Box::new(callee),
             paren,
             arguments,
@@ -506,30 +521,36 @@ impl Parser {
     pub fn primary(&mut self) -> Result<Expression, ParserError> {
         if self.match_token(&[TokenType::False]) {
             Ok(Expression::Literal(Literal {
+                id: self.next_id(),
                 value: LiteralTypes::Bool(false),
             }))
         } else if self.match_token(&[TokenType::True]) {
             Ok(Expression::Literal(Literal {
+                id: self.next_id(),
                 value: LiteralTypes::Bool(true),
             }))
         } else if self.match_token(&[TokenType::Nil]) {
             Ok(Expression::Literal(Literal {
+                id: self.next_id(),
                 value: LiteralTypes::Nil,
             }))
         } else if self.match_token(&[TokenType::Number]) {
             let number = self.previous().clone();
             Ok(Expression::Literal(Literal {
+                id: self.next_id(),
                 value: number.literal,
             }))
         } else if self.match_token(&[TokenType::String]) {
             let string = self.previous().clone();
             Ok(Expression::Literal(Literal {
+                id: self.next_id(),
                 value: string.literal,
             }))
         } else if self.match_token(&[TokenType::LeftParen]) {
             let expr = self.expression()?;
             self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
             Ok(Expression::Grouping(Grouping {
+                id: self.next_id(),
                 expression: Box::new(expr),
             }))
         } else if self.match_token(&[TokenType::Identifier]) {
@@ -542,6 +563,7 @@ impl Parser {
                         });
                     }
                     Ok(Expression::Variable(Variable {
+                        id: self.next_id(),
                         name: identifier.clone(),
                     }))
                 }
@@ -606,6 +628,12 @@ impl Parser {
     pub fn is_at_end(&self) -> bool {
         self.tokens[self.current].token_type == TokenType::Eof
     }
+
+    fn next_id(&mut self) -> usize {
+        let id = self.current_id;
+        self.current_id += 1;
+        id
+    }
 }
 
 #[cfg(test)]
@@ -618,7 +646,9 @@ mod tests {
         let expression = "1 + 2 * 3 - 4 / 5;";
 
         let four_div_five = Box::new(Expression::Binary(Binary {
+            id: 7,
             left: Box::new(Expression::Literal(Literal {
+                id: 5,
                 value: LiteralTypes::Number(4.0),
             })),
             operator: Token {
@@ -628,11 +658,14 @@ mod tests {
                 line: 1,
             },
             right: Box::new(Expression::Literal(Literal {
+                id: 6,
                 value: LiteralTypes::Number(5.0),
             })),
         }));
         let two_mul_three = Box::new(Expression::Binary(Binary {
+            id: 3,
             left: Box::new(Expression::Literal(Literal {
+                id: 1,
                 value: LiteralTypes::Number(2.0),
             })),
             operator: Token {
@@ -642,12 +675,16 @@ mod tests {
                 line: 1,
             },
             right: Box::new(Expression::Literal(Literal {
+                id: 2,
                 value: LiteralTypes::Number(3.0),
             })),
         }));
         let reference = Expression::Binary(Binary {
+            id: 8,
             left: Box::new(Expression::Binary(Binary {
+                id: 4,
                 left: Box::new(Expression::Literal(Literal {
+                    id: 0,
                     value: LiteralTypes::Number(1.0),
                 })),
                 operator: Token {

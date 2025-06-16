@@ -1,5 +1,3 @@
-use std::cmp::max;
-
 use crate::tokens::{LiteralTypes, Token, TokenType};
 
 pub struct Scanner {
