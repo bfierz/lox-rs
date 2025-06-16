@@ -8,11 +8,13 @@ mod expression;
 mod interpreter;
 mod parser;
 mod printer;
+mod resolver;
 mod scanner;
 mod stmt;
 mod tokens;
 
 use parser::Parser;
+use resolver::Resolver;
 use scanner::Scanner;
 
 // Define exit codes constants
@@ -88,8 +90,13 @@ fn run(interpreter: &mut interpreter::Interpreter, source: String) -> i32 {
         return EXIT_CODE_DATA_ERROR;
     }
 
-    let statements = parse_result.unwrap();
+    let mut resolver = Resolver::new(interpreter);
+    if let Err(err) = resolver.resolve_stmts(parse_result.as_ref().unwrap()) {
+        eprintln!("{}", err.message);
+        return EXIT_CODE_DATA_ERROR;
+    }
 
+    let statements = parse_result.unwrap();
     let result = interpreter.execute(&statements);
     if let Err(err) = result {
         eprintln!("{}", err.message);

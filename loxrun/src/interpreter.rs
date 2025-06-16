@@ -1,7 +1,7 @@
 use crate::callable::{
     Callable, LoxBuiltinFunctionClock, LoxCallable, LoxDynamicFunction, LoxFunction,
 };
-use crate::expression::{Binary, Call, Expression, Grouping, Literal, Logical, Unary};
+use crate::expression::{Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
 use std::cell::RefCell;
@@ -109,6 +109,40 @@ impl Environment {
         }
     }
 
+    pub fn assign_at(
+        &mut self,
+        name: &Token,
+        value: Value,
+        depth: usize,
+    ) -> Result<InterpreterResult, InterpreterError> {
+        if depth == 0 {
+            return self.assign(name, value);
+        }
+        let mut environment = self.enclosing.clone();
+        for _ in 1..depth {
+            if let Some(env) = environment {
+                environment = env.borrow().enclosing.clone();
+            } else {
+                return Err(InterpreterError {
+                    message: format!(
+                        "Undefined variable '{}'.\n[line {}]",
+                        name.lexeme, name.line
+                    ),
+                });
+            }
+        }
+        if let Some(env) = environment {
+            env.borrow_mut().assign(name, value)
+        } else {
+            Err(InterpreterError {
+                message: format!(
+                    "Undefined variable '{}'.\n[line {}]",
+                    name.lexeme, name.line
+                ),
+            })
+        }
+    }
+
     pub fn get(&self, name: &Token) -> Option<Value> {
         let result = self.values.get(name.lexeme.as_str());
 
@@ -120,11 +154,28 @@ impl Environment {
             None => None,
         }
     }
+
+    pub fn get_at(&self, name: &Token, depth: usize) -> Option<Value> {
+        if depth == 0 {
+            return self.get(name);
+        }
+        let mut environment = self.enclosing.clone();
+        for _ in 1..depth {
+            if let Some(env) = environment {
+                environment = env.borrow().enclosing.clone();
+            } else {
+                return None;
+            }
+        }
+        environment.unwrap().borrow().get(name)
+    }
 }
 
 pub struct Interpreter {
     // Global environment for variable storage
     pub globals: Rc<RefCell<Environment>>,
+    // Local variable lookup
+    pub locals: std::collections::HashMap<usize, usize>,
     // Environment for variable storage
     pub environment: Rc<RefCell<Environment>>,
     // Dedicated output stream for the interpreter
@@ -142,8 +193,36 @@ impl Interpreter {
         );
         Interpreter {
             globals: Rc::clone(&globals),
+            locals: std::collections::HashMap::new(),
             environment: globals,
             output: Box::new(std::io::stdout()),
+        }
+    }
+
+    pub fn resolve(&mut self, expr: &Expression, depth: usize) {
+        match expr {
+            Expression::Variable(variable) => {
+                self.locals.insert(variable.id, depth);
+            }
+            Expression::Assign(assign) => {
+                self.locals.insert(assign.id, depth);
+            }
+            Expression::Binary(binary) => {
+                self.locals.insert(binary.id, depth);
+            }
+            Expression::Call(call) => {
+                self.locals.insert(call.id, depth);
+            }
+            Expression::Grouping(grouping) => {
+                self.locals.insert(grouping.id, depth);
+            }
+            Expression::Literal(_) => {}
+            Expression::Logical(logical) => {
+                self.locals.insert(logical.id, depth);
+            }
+            Expression::Unary(unary) => {
+                self.locals.insert(unary.id, depth);
+            }
         }
     }
 
@@ -261,23 +340,50 @@ impl Interpreter {
             Expression::Literal(literal) => self.literal(literal),
             Expression::Logical(logical) => self.logical(logical),
             Expression::Unary(unary) => self.unary(unary),
-            Expression::Variable(variable) => match self.environment.borrow().get(&variable.name) {
-                Some(value) => Ok(value.clone()),
-                None => Err(InterpreterError {
-                    message: format!(
-                        "Undefined variable '{}'.\n[line {}]",
-                        variable.name.lexeme, variable.name.line
-                    ),
-                }),
-            },
+            Expression::Variable(variable) => self.lookup_variable(&variable.name, variable),
             Expression::Assign(assign) => {
                 let value = self.expression(&*assign.value)?;
-                self.environment
-                    .borrow_mut()
-                    .assign(&assign.name, value.clone())?;
+
+                self.locals
+                    .get(&assign.id)
+                    .map(|depth| {
+                        self.environment
+                            .borrow_mut()
+                            .assign_at(&assign.name, value.clone(), *depth)
+                    })
+                    .unwrap_or_else(|| {
+                        self.globals
+                            .borrow_mut()
+                            .assign(&assign.name, value.clone())
+                    })?;
                 Ok(value)
             }
         }
+    }
+
+    fn lookup_variable(
+        &mut self,
+        name: &Token,
+        variable: &Variable,
+    ) -> Result<Value, InterpreterError> {
+        if let Some(depth) = self.locals.get(&variable.id) {
+            return self
+                .environment
+                .borrow()
+                .get_at(name, *depth)
+                .ok_or(InterpreterError {
+                    message: format!(
+                        "Undefined variable '{}'.\n[line {}]",
+                        name.lexeme, name.line
+                    ),
+                });
+        }
+        self.globals.borrow().get(name).ok_or(InterpreterError {
+            message: format!(
+                "Undefined variable '{}'.\n[line {}]",
+                name.lexeme, name.line
+            ),
+        })
     }
 
     fn call(&mut self, call: &Call) -> Result<Value, InterpreterError> {
@@ -465,6 +571,7 @@ impl Interpreter {
 mod tests {
     use super::*;
     use crate::parser::Parser;
+    use crate::resolver::Resolver;
     use crate::scanner::Scanner;
     use crate::{stmt::PrintStmt, tokens::Token};
     use std::io;
@@ -493,16 +600,20 @@ mod tests {
         let parse_result = parser.parse();
         assert!(parse_result.is_ok());
 
-        let statements = parse_result.unwrap();
-
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let globals = Rc::new(RefCell::new(Environment::new()));
         let mut interpreter = Interpreter {
             globals: Rc::clone(&globals),
+            locals: std::collections::HashMap::new(),
             environment: globals,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
-        let result = interpreter.execute(&statements);
+
+        let mut resolver = Resolver::new(&mut interpreter);
+        let resolver_result = resolver.resolve_stmts(parse_result.as_ref().unwrap());
+        assert!(resolver_result.is_ok());
+
+        let result = interpreter.execute(parse_result.as_ref().unwrap());
 
         match result {
             Ok(_) => Ok(String::from_utf8_lossy(&output.borrow()).to_string()),
@@ -513,7 +624,9 @@ mod tests {
     #[test]
     fn test_interpret_sum() {
         let expression = Expression::Binary(Binary {
+            id: 0,
             left: Box::new(Expression::Literal(Literal {
+                id: 1,
                 value: LiteralTypes::Number(5.0),
             })),
             operator: Token {
@@ -523,6 +636,7 @@ mod tests {
                 line: 1,
             },
             right: Box::new(Expression::Literal(Literal {
+                id: 2,
                 value: LiteralTypes::Number(3.0),
             })),
         });
@@ -535,7 +649,9 @@ mod tests {
     #[test]
     fn test_interpret_subtraction() {
         let expression = Expression::Binary(Binary {
+            id: 0,
             left: Box::new(Expression::Literal(Literal {
+                id: 1,
                 value: LiteralTypes::Number(5.0),
             })),
             operator: Token {
@@ -545,6 +661,7 @@ mod tests {
                 line: 1,
             },
             right: Box::new(Expression::Literal(Literal {
+                id: 2,
                 value: LiteralTypes::Number(3.0),
             })),
         });
@@ -557,7 +674,9 @@ mod tests {
     #[test]
     fn test_interpret_multiplication() {
         let expression = Expression::Binary(Binary {
+            id: 0,
             left: Box::new(Expression::Literal(Literal {
+                id: 1,
                 value: LiteralTypes::Number(5.0),
             })),
             operator: Token {
@@ -567,6 +686,7 @@ mod tests {
                 line: 1,
             },
             right: Box::new(Expression::Literal(Literal {
+                id: 2,
                 value: LiteralTypes::Number(3.0),
             })),
         });
@@ -578,7 +698,9 @@ mod tests {
     #[test]
     fn test_interpret_division() {
         let expression = Expression::Binary(Binary {
+            id: 0,
             left: Box::new(Expression::Literal(Literal {
+                id: 1,
                 value: LiteralTypes::Number(6.0),
             })),
             operator: Token {
@@ -588,6 +710,7 @@ mod tests {
                 line: 1,
             },
             right: Box::new(Expression::Literal(Literal {
+                id: 2,
                 value: LiteralTypes::Number(3.0),
             })),
         });
@@ -599,8 +722,11 @@ mod tests {
     #[test]
     fn test_star_before_plus() {
         let expression = Expression::Binary(Binary {
+            id: 0,
             left: Box::new(Expression::Binary(Binary {
+                id: 1,
                 left: Box::new(Expression::Literal(Literal {
+                    id: 2,
                     value: LiteralTypes::Number(5.0),
                 })),
                 operator: Token {
@@ -610,6 +736,7 @@ mod tests {
                     line: 1,
                 },
                 right: Box::new(Expression::Literal(Literal {
+                    id: 3,
                     value: LiteralTypes::Number(3.0),
                 })),
             })),
@@ -620,6 +747,7 @@ mod tests {
                 line: 1,
             },
             right: Box::new(Expression::Literal(Literal {
+                id: 4,
                 value: LiteralTypes::Number(2.0),
             })),
         });
@@ -632,7 +760,9 @@ mod tests {
     #[test]
     fn test_print_expression() {
         let expression = Expression::Binary(Binary {
+            id: 0,
             left: Box::new(Expression::Literal(Literal {
+                id: 1,
                 value: LiteralTypes::Number(5.0),
             })),
             operator: Token {
@@ -642,6 +772,7 @@ mod tests {
                 line: 1,
             },
             right: Box::new(Expression::Literal(Literal {
+                id: 2,
                 value: LiteralTypes::Number(3.0),
             })),
         });
@@ -654,6 +785,7 @@ mod tests {
         let globals = Rc::new(RefCell::new(Environment::new()));
         let mut interpreter = Interpreter {
             globals: Rc::clone(&globals),
+            locals: std::collections::HashMap::new(),
             environment: globals,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
