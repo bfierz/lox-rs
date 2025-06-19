@@ -1,6 +1,7 @@
 use crate::callable::{
     Callable, LoxBuiltinFunctionClock, LoxCallable, LoxDynamicFunction, LoxFunction,
 };
+use crate::class::{Instance, LoxClass};
 use crate::expression::{Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
@@ -16,6 +17,7 @@ pub struct InterpreterError {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Callable(Callable),
+    Instance(Instance),
     Number(f64),
     String(String),
     Bool(bool),
@@ -39,6 +41,7 @@ impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Callable(c) => write!(f, "{}", c),
+            Value::Instance(i) => write!(f, "{}", i.to_string()),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
@@ -301,6 +304,15 @@ impl Interpreter {
                     }
                 }
             }
+            Stmt::Class(class_stmt) => {
+                self.environment
+                    .borrow_mut()
+                    .define(class_stmt.name.lexeme.clone(), Value::Nil);
+                let class = LoxClass::new(class_stmt.name.lexeme.clone());
+                self.environment
+                    .borrow_mut()
+                    .assign(&class_stmt.name, Value::Callable(Callable::Class(class)))?;
+            }
         }
         Ok(InterpreterResult::None)
     }
@@ -424,6 +436,18 @@ impl Interpreter {
                         });
                     }
                     func.call(self, arguments)
+                }
+                Callable::Class(class) => {
+                    if !call.arguments.is_empty() {
+                        return Err(InterpreterError {
+                            message: format!(
+                                "Class '{}' does not take any arguments.\n[line {}]",
+                                class.name, call.paren.line
+                            ),
+                        });
+                    }
+                    let instance = Instance::new(class.clone());
+                    Ok(Value::Instance(instance))
                 }
             }
         } else {
@@ -1241,5 +1265,36 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "11\n12\n");
+    }
+
+    #[test]
+    fn test_class_declaration() {
+        let source = "
+        class DevonshireCream {
+            serveOn() {
+                return \"Scones\";
+            }
+        }
+        print DevonshireCream;
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "DevonshireCream\n");
+    }
+
+    #[test]
+    fn test_class_instance() {
+        let source = "
+        class Bagel {}
+        var bagel = Bagel();
+        print bagel;
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Bagel instance\n");
     }
 }

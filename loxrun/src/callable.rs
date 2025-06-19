@@ -1,3 +1,4 @@
+use crate::class::LoxClass;
 use crate::interpreter::{Environment, Interpreter, InterpreterError, InterpreterResult, Value};
 use crate::stmt::FunctionStmt;
 use std::cell::RefCell;
@@ -8,6 +9,7 @@ use std::rc::Rc;
 pub enum Callable {
     DynamicFunction(LoxDynamicFunction),
     Function(LoxFunction),
+    Class(LoxClass),
 }
 impl std::fmt::Display for Callable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -16,6 +18,7 @@ impl std::fmt::Display for Callable {
                 write!(f, "{}", fun.callable.borrow().as_ref().to_string())
             }
             Callable::Function(fun) => write!(f, "{}", fun.to_string()),
+            Callable::Class(class) => write!(f, "{}", class.to_string()),
         }
     }
 }

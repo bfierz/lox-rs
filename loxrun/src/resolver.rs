@@ -84,6 +84,11 @@ impl<'a> Resolver<'a> {
                 self.resolve_function(&expr.params, &expr.body, FunctionType::Function)?;
                 Ok(())
             }
+            Stmt::Class(expr) => {
+                self.declare(&expr.name)?;
+                self.define(&expr.name)?;
+                Ok(())
+            }
         }
     }
 

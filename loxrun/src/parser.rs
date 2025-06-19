@@ -1,8 +1,8 @@
 use crate::{
     expression::{Assign, Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable},
     stmt::{
-        BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt, VarStmt,
-        WhileStmt,
+        BlockStmt, ClassStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt,
+        VarStmt, WhileStmt,
     },
     tokens::{LiteralTypes, Token, TokenType},
 };
@@ -10,7 +10,8 @@ use crate::{
 // Production rules
 // program -> statement* EOF ;
 
-// declaration -> funDecl | varDecl | statement ;
+// declaration -> classDecl | funDecl | varDecl | statement ;
+// classDecl -> "class" IDENTIFIER "{" function* "}" ;
 // funDecls -> "fun" function ;
 // function -> IDENTIFIER "(" parameters? ")" block ;
 // parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
@@ -102,8 +103,10 @@ impl Parser {
     }
 
     pub fn declaration(&mut self) -> Result<Stmt, ParserError> {
-        if self.match_token(&[TokenType::Fun]) {
-            self.fun_declaration()
+        if self.match_token(&[TokenType::Class]) {
+            self.class_declaration()
+        } else if self.match_token(&[TokenType::Fun]) {
+            self.fun_declaration("function".to_string())
         } else if self.match_token(&[TokenType::Var]) {
             self.var_declaration()
         } else {
@@ -111,9 +114,27 @@ impl Parser {
         }
     }
 
-    pub fn fun_declaration(&mut self) -> Result<Stmt, ParserError> {
-        let name = self.consume(TokenType::Identifier, "Expect function name.")?;
-        self.consume(TokenType::LeftParen, "Expect '(' after function name.")?;
+    pub fn class_declaration(&mut self) -> Result<Stmt, ParserError> {
+        let name = self.consume(TokenType::Identifier, "Expect class name.")?;
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.")?;
+
+        let mut methods = Vec::new();
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            let stmt = self.fun_declaration("method".to_string())?;
+            if let Stmt::Function(method) = stmt {
+                methods.push(method);
+            }
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after class body.")?;
+        Ok(Stmt::Class(ClassStmt { name, methods }))
+    }
+
+    pub fn fun_declaration(&mut self, kind: String) -> Result<Stmt, ParserError> {
+        let name = self.consume_msg(TokenType::Identifier, format!("Expect {} name.", kind))?;
+        self.consume_msg(
+            TokenType::LeftParen,
+            format!("Expect '(' after {} name.", kind),
+        )?;
 
         let mut params = Vec::new();
         if !self.check(&TokenType::RightParen) {
@@ -595,6 +616,10 @@ impl Parser {
     }
 
     pub fn consume(&mut self, token: TokenType, message: &str) -> Result<Token, ParserError> {
+        self.consume_msg(token, message.to_string())
+    }
+
+    pub fn consume_msg(&mut self, token: TokenType, message: String) -> Result<Token, ParserError> {
         if self.check(&token) {
             self.advance();
             Ok(self.previous())

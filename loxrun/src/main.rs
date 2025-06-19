@@ -4,6 +4,7 @@ use std::io::{self, Write};
 use std::process;
 
 mod callable;
+mod class;
 mod expression;
 mod interpreter;
 mod parser;
