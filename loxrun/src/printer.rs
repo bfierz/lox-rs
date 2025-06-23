@@ -17,6 +17,10 @@ pub fn pretty_print(expr: &Expression) -> String {
             let args: Vec<String> = call.arguments.iter().map(|arg| pretty_print(arg)).collect();
             format!("{}({})", callee, args.join(", "))
         }
+        Expression::Get(get) => {
+            let object = pretty_print(&*get.object);
+            format!("{} . {}", object, get.name.lexeme)
+        }
         Expression::Grouping(grouping) => {
             let expr = pretty_print(&*grouping.expression);
             format!("(group {})", expr)
@@ -31,6 +35,11 @@ pub fn pretty_print(expr: &Expression) -> String {
             let left = pretty_print(&*logical.left);
             let right = pretty_print(&*logical.right);
             format!("({} {} {})", logical.operator.lexeme, left, right)
+        }
+        Expression::Set(set) => {
+            let object = pretty_print(&*set.object);
+            let value = pretty_print(&*set.value);
+            format!("{} . {} = {}", object, set.name.lexeme, value)
         }
         Expression::Unary(unary) => {
             let right = pretty_print(&*unary.right);
@@ -58,6 +67,10 @@ pub fn rpn_print(expr: &Expression) -> String {
             let args: Vec<String> = call.arguments.iter().map(|arg| rpn_print(arg)).collect();
             format!("{}({})", callee, args.join(", "))
         }
+        Expression::Get(get) => {
+            let object = rpn_print(&*get.object);
+            format!("{} . {}", object, get.name.lexeme)
+        }
         Expression::Grouping(grouping) => rpn_print(&*grouping.expression),
         Expression::Literal(literal) => match &literal.value {
             LiteralTypes::String(s) => format!("{}", s),
@@ -69,6 +82,11 @@ pub fn rpn_print(expr: &Expression) -> String {
             let left = rpn_print(&*logical.left);
             let right = rpn_print(&*logical.right);
             format!("{} {} {}", left, right, logical.operator.lexeme)
+        }
+        Expression::Set(set) => {
+            let object = rpn_print(&*set.object);
+            let value = rpn_print(&*set.value);
+            format!("{} . {} = {}", object, set.name.lexeme, value)
         }
         Expression::Unary(unary) => {
             let right = rpn_print(&*unary.right);

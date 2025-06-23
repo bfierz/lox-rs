@@ -1,3 +1,7 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use crate::callable::LoxCallable;
 use crate::interpreter::{Interpreter, InterpreterError, Value};
 
@@ -18,11 +22,28 @@ impl LoxClass {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Instance {
     pub class: LoxClass,
+    pub fields: HashMap<String, Value>,
 }
 
 impl Instance {
     pub fn new(class: LoxClass) -> Self {
-        Self { class }
+        Self {
+            class,
+            fields: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, name: &String) -> Result<Value, InterpreterError> {
+        if self.fields.contains_key(name) {
+            return Ok(self.fields[name].clone());
+        }
+        Err(InterpreterError {
+            message: format!("Undefined property '{}'.", name),
+        })
+    }
+
+    pub fn set(&mut self, name: String, value: Value) {
+        self.fields.insert(name, value);
     }
 
     pub fn to_string(&self) -> String {
@@ -40,7 +61,7 @@ impl LoxCallable for LoxClass {
         _interpreter: &mut Interpreter,
         _arguments: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
-        let instance = Instance::new(self.clone());
+        let instance = Rc::new(RefCell::new(Instance::new(self.clone())));
         Ok(Value::Instance(instance))
     }
 

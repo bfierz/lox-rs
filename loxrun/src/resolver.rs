@@ -153,6 +153,10 @@ impl<'a> Resolver<'a> {
                 }
                 Ok(())
             }
+            Expression::Get(get) => {
+                self.resolve_expr(get.object.as_ref())?;
+                Ok(())
+            }
             Expression::Grouping(group) => {
                 self.resolve_expr(&group.expression)?;
                 Ok(())
@@ -161,6 +165,11 @@ impl<'a> Resolver<'a> {
             Expression::Logical(logical) => {
                 self.resolve_expr(logical.left.as_ref())?;
                 self.resolve_expr(logical.right.as_ref())?;
+                Ok(())
+            }
+            Expression::Set(set) => {
+                self.resolve_expr(set.value.as_ref())?;
+                self.resolve_expr(set.object.as_ref())?;
                 Ok(())
             }
             Expression::Unary(unary) => {

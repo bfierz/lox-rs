@@ -5,9 +5,11 @@ pub enum Expression {
     Assign(Assign),
     Binary(Binary),
     Call(Call),
+    Get(Get),
     Grouping(Grouping),
     Literal(Literal),
     Logical(Logical),
+    Set(Set),
     Unary(Unary),
     Variable(Variable),
 }
@@ -36,6 +38,13 @@ pub struct Call {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Get {
+    pub id: usize,
+    pub object: Box<Expression>,
+    pub name: Token,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Grouping {
     pub id: usize,
     pub expression: Box<Expression>,
@@ -53,6 +62,14 @@ pub struct Logical {
     pub left: Box<Expression>,
     pub operator: Token,
     pub right: Box<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Set {
+    pub id: usize,
+    pub object: Box<Expression>,
+    pub name: Token,
+    pub value: Box<Expression>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

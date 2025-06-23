@@ -2,7 +2,9 @@ use crate::callable::{
     Callable, LoxBuiltinFunctionClock, LoxCallable, LoxDynamicFunction, LoxFunction,
 };
 use crate::class::{Instance, LoxClass};
-use crate::expression::{Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable};
+use crate::expression::{
+    Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, Unary, Variable,
+};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
 use std::cell::RefCell;
@@ -17,7 +19,7 @@ pub struct InterpreterError {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Callable(Callable),
-    Instance(Instance),
+    Instance(Rc<RefCell<Instance>>),
     Number(f64),
     String(String),
     Bool(bool),
@@ -41,7 +43,7 @@ impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Callable(c) => write!(f, "{}", c),
-            Value::Instance(i) => write!(f, "{}", i.to_string()),
+            Value::Instance(i) => write!(f, "{}", i.borrow().to_string()),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
@@ -216,12 +218,18 @@ impl Interpreter {
             Expression::Call(call) => {
                 self.locals.insert(call.id, depth);
             }
+            Expression::Get(get) => {
+                self.locals.insert(get.id, depth);
+            }
             Expression::Grouping(grouping) => {
                 self.locals.insert(grouping.id, depth);
             }
             Expression::Literal(_) => {}
             Expression::Logical(logical) => {
                 self.locals.insert(logical.id, depth);
+            }
+            Expression::Set(set) => {
+                self.locals.insert(set.id, depth);
             }
             Expression::Unary(unary) => {
                 self.locals.insert(unary.id, depth);
@@ -348,9 +356,11 @@ impl Interpreter {
         match expression {
             Expression::Binary(binary) => self.binary(binary),
             Expression::Call(call) => self.call(call),
+            Expression::Get(get) => self.get(get),
             Expression::Grouping(grouping) => self.grouping(grouping),
             Expression::Literal(literal) => self.literal(literal),
             Expression::Logical(logical) => self.logical(logical),
+            Expression::Set(set) => self.set(set),
             Expression::Unary(unary) => self.unary(unary),
             Expression::Variable(variable) => self.lookup_variable(&variable.name, variable),
             Expression::Assign(assign) => {
@@ -446,7 +456,7 @@ impl Interpreter {
                             ),
                         });
                     }
-                    let instance = Instance::new(class.clone());
+                    let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
                     Ok(Value::Instance(instance))
                 }
             }
@@ -457,6 +467,33 @@ impl Interpreter {
                     call.paren.line
                 ),
             });
+        }
+    }
+
+    fn get(&mut self, get: &Get) -> Result<Value, InterpreterError> {
+        let object = self.expression(&*get.object)?;
+        match object {
+            Value::Instance(instance) => instance.borrow().get(&get.name.lexeme),
+            _ => Err(InterpreterError {
+                message: format!("Only instances have properties.\n[line {}]", get.name.line),
+            }),
+        }
+    }
+
+    fn set(&mut self, set: &Set) -> Result<Value, InterpreterError> {
+        let object = &self.expression(&*set.object)?;
+
+        match object {
+            Value::Instance(instance) => {
+                let value = self.expression(&*set.value)?;
+                instance
+                    .borrow_mut()
+                    .set(set.name.lexeme.clone(), value.clone());
+                Ok(value)
+            }
+            _ => Err(InterpreterError {
+                message: format!("Only instances have fields.\n[line {}]", set.name.line),
+            }),
         }
     }
 
@@ -1296,5 +1333,20 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Bagel instance\n");
+    }
+
+    #[test]
+    fn test_class_instance_fields() {
+        let source = "
+        class Bagel {}
+        var bagel = Bagel();
+        bagel.flavor = \"Sesame\";
+        print bagel.flavor;
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Sesame\n");
     }
 }

@@ -1,5 +1,7 @@
 use crate::{
-    expression::{Assign, Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable},
+    expression::{
+        Assign, Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, Unary, Variable,
+    },
     stmt::{
         BlockStmt, ClassStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt,
         VarStmt, WhileStmt,
@@ -26,7 +28,7 @@ use crate::{
 // block -> "{" declaration* "}" ;
 
 // expression -> assignment ;
-// assignment -> IDENTIFIER "=" expression | logical_or ;
+// assignment -> ( call "." )? IDENTIFIER "=" assignment | logical_or ;
 // logical_or -> logical_and ( "or" logical_and )* ;
 // logical_and -> equality ( "and" equality )* ;
 // equality -> comparison ( ( "!=" | "==" ) comparison )* ;
@@ -361,6 +363,14 @@ impl Parser {
                         value: Box::new(value),
                     }));
                 }
+                Expression::Get(ref get) => {
+                    return Ok(Expression::Set(Set {
+                        id: self.next_id(),
+                        object: get.object.clone(),
+                        name: get.name.clone(),
+                        value: Box::new(value),
+                    }));
+                }
                 _ => {
                     return Err(ParserError {
                         message: format!(
@@ -502,6 +512,14 @@ impl Parser {
         loop {
             if self.match_token(&[TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_token(&[TokenType::Dot]) {
+                let name =
+                    self.consume(TokenType::Identifier, "Expect property name after '.'.")?;
+                expr = Expression::Get(Get {
+                    id: self.next_id(),
+                    object: Box::new(expr),
+                    name,
+                });
             } else {
                 break;
             }
