@@ -2,16 +2,21 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::callable::LoxCallable;
+use crate::callable::{Callable, LoxCallable, LoxFunction};
 use crate::interpreter::{Interpreter, InterpreterError, Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoxClass {
     pub name: String,
+    pub methods: HashMap<String, Box<LoxFunction>>,
 }
 impl LoxClass {
-    pub fn new(name: String) -> Self {
-        Self { name }
+    pub fn new(name: String, methods: HashMap<String, Box<LoxFunction>>) -> Self {
+        Self { name, methods }
+    }
+
+    pub fn find_method(&self, name: &String) -> Option<Box<LoxFunction>> {
+        self.methods.get(name).cloned()
     }
 
     pub fn to_string(&self) -> String {
@@ -37,6 +42,10 @@ impl Instance {
         if self.fields.contains_key(name) {
             return Ok(self.fields[name].clone());
         }
+        if let Some(method) = self.class.find_method(name) {
+            return Ok(Value::Callable(Callable::Function(*method)));
+        }
+
         Err(InterpreterError {
             message: format!("Undefined property '{}'.", name),
         })

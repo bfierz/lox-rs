@@ -13,6 +13,7 @@ pub struct ResolverError {
 enum FunctionType {
     None,
     Function,
+    Method,
 }
 
 pub struct Resolver<'a> {
@@ -84,9 +85,13 @@ impl<'a> Resolver<'a> {
                 self.resolve_function(&expr.params, &expr.body, FunctionType::Function)?;
                 Ok(())
             }
-            Stmt::Class(expr) => {
-                self.declare(&expr.name)?;
-                self.define(&expr.name)?;
+            Stmt::Class(stmt) => {
+                self.declare(&stmt.name)?;
+                self.define(&stmt.name)?;
+
+                for method in stmt.methods.iter() {
+                    self.resolve_function(&method.params, &method.body, FunctionType::Method)?;
+                }
                 Ok(())
             }
         }

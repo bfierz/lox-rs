@@ -8,6 +8,7 @@ use crate::expression::{
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::Write;
 use std::rc::Rc;
 
@@ -63,20 +64,20 @@ pub struct Environment {
     enclosing: Option<Rc<RefCell<Environment>>>,
 
     // HashMap to store variable names and their values
-    values: std::collections::HashMap<String, Value>,
+    values: HashMap<String, Value>,
 }
 impl Environment {
     pub fn new() -> Self {
         Environment {
             enclosing: None,
-            values: std::collections::HashMap::new(),
+            values: HashMap::new(),
         }
     }
 
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
         Environment {
             enclosing: Some(enclosing),
-            values: std::collections::HashMap::new(),
+            values: HashMap::new(),
         }
     }
 
@@ -180,7 +181,7 @@ pub struct Interpreter {
     // Global environment for variable storage
     pub globals: Rc<RefCell<Environment>>,
     // Local variable lookup
-    pub locals: std::collections::HashMap<usize, usize>,
+    pub locals: HashMap<usize, usize>,
     // Environment for variable storage
     pub environment: Rc<RefCell<Environment>>,
     // Dedicated output stream for the interpreter
@@ -198,7 +199,7 @@ impl Interpreter {
         );
         Interpreter {
             globals: Rc::clone(&globals),
-            locals: std::collections::HashMap::new(),
+            locals: HashMap::new(),
             environment: globals,
             output: Box::new(std::io::stdout()),
         }
@@ -316,7 +317,16 @@ impl Interpreter {
                 self.environment
                     .borrow_mut()
                     .define(class_stmt.name.lexeme.clone(), Value::Nil);
-                let class = LoxClass::new(class_stmt.name.lexeme.clone());
+
+                let mut methods = HashMap::new();
+                for method in &class_stmt.methods {
+                    methods.insert(
+                        method.name.lexeme.clone(),
+                        Box::new(LoxFunction::new(method.clone(), self.environment.clone())),
+                    );
+                }
+
+                let class = LoxClass::new(class_stmt.name.lexeme.clone(), methods);
                 self.environment
                     .borrow_mut()
                     .assign(&class_stmt.name, Value::Callable(Callable::Class(class)))?;
@@ -665,7 +675,7 @@ mod tests {
         let globals = Rc::new(RefCell::new(Environment::new()));
         let mut interpreter = Interpreter {
             globals: Rc::clone(&globals),
-            locals: std::collections::HashMap::new(),
+            locals: HashMap::new(),
             environment: globals,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
@@ -846,7 +856,7 @@ mod tests {
         let globals = Rc::new(RefCell::new(Environment::new()));
         let mut interpreter = Interpreter {
             globals: Rc::clone(&globals),
-            locals: std::collections::HashMap::new(),
+            locals: HashMap::new(),
             environment: globals,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
@@ -1348,5 +1358,22 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Sesame\n");
+    }
+
+    #[test]
+    fn test_class_method() {
+        let source = "
+        class Bacon {
+            eat() {
+                print \"Crunch crunch crunch!\";
+            }
+        }
+        Bacon().eat();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Crunch crunch crunch!\n");
     }
 }
