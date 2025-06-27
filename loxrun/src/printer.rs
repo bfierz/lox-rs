@@ -41,6 +41,9 @@ pub fn pretty_print(expr: &Expression) -> String {
             let value = pretty_print(&*set.value);
             format!("{} . {} = {}", object, set.name.lexeme, value)
         }
+        Expression::This(this) => {
+            format!("this")
+        }
         Expression::Unary(unary) => {
             let right = pretty_print(&*unary.right);
             format!("({} {})", unary.operator.lexeme, right)
@@ -87,6 +90,9 @@ pub fn rpn_print(expr: &Expression) -> String {
             let object = rpn_print(&*set.object);
             let value = rpn_print(&*set.value);
             format!("{} . {} = {}", object, set.name.lexeme, value)
+        }
+        Expression::This(this) => {
+            format!("this")
         }
         Expression::Unary(unary) => {
             let right = rpn_print(&*unary.right);

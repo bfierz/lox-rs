@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use crate::callable::{Callable, LoxCallable, LoxFunction};
 use crate::interpreter::{Interpreter, InterpreterError, Value};
+use crate::tokens::Token;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoxClass {
@@ -30,25 +31,31 @@ pub struct Instance {
     pub fields: HashMap<String, Value>,
 }
 
+pub fn get_instance_field(
+    instance: &Rc<RefCell<Instance>>,
+    name: &Token,
+) -> Result<Value, InterpreterError> {
+    if instance.borrow().fields.contains_key(&name.lexeme) {
+        return Ok(instance.borrow().fields[&name.lexeme].clone());
+    }
+    if let Some(method) = instance.borrow().class.find_method(&name.lexeme) {
+        return Ok(Value::Callable(Callable::Function(method.bind(&instance))));
+    }
+
+    Err(InterpreterError {
+        message: format!(
+            "Undefined property '{}'.\n[line {}]",
+            name.lexeme, name.line
+        ),
+    })
+}
+
 impl Instance {
     pub fn new(class: LoxClass) -> Self {
         Self {
             class,
             fields: HashMap::new(),
         }
-    }
-
-    pub fn get(&self, name: &String) -> Result<Value, InterpreterError> {
-        if self.fields.contains_key(name) {
-            return Ok(self.fields[name].clone());
-        }
-        if let Some(method) = self.class.find_method(name) {
-            return Ok(Value::Callable(Callable::Function(*method)));
-        }
-
-        Err(InterpreterError {
-            message: format!("Undefined property '{}'.", name),
-        })
     }
 
     pub fn set(&mut self, name: String, value: Value) {

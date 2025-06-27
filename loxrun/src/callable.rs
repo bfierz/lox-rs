@@ -1,4 +1,4 @@
-use crate::class::LoxClass;
+use crate::class::{Instance, LoxClass};
 use crate::interpreter::{Environment, Interpreter, InterpreterError, InterpreterResult, Value};
 use crate::stmt::FunctionStmt;
 use std::cell::RefCell;
@@ -70,6 +70,19 @@ impl LoxFunction {
         Self {
             declaration: Box::new(declaration),
             closure: closure,
+        }
+    }
+
+    pub fn bind(&self, instance: &Rc<RefCell<Instance>>) -> Self {
+        let fun_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            self.closure.clone(),
+        )));
+        fun_env
+            .borrow_mut()
+            .define("this".to_string(), Value::Instance(Rc::clone(instance)));
+        Self {
+            declaration: self.declaration.clone(),
+            closure: fun_env,
         }
     }
 }

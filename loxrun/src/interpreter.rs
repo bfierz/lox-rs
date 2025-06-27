@@ -1,7 +1,7 @@
 use crate::callable::{
     Callable, LoxBuiltinFunctionClock, LoxCallable, LoxDynamicFunction, LoxFunction,
 };
-use crate::class::{Instance, LoxClass};
+use crate::class::{get_instance_field, Instance, LoxClass};
 use crate::expression::{
     Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, Unary, Variable,
 };
@@ -232,6 +232,9 @@ impl Interpreter {
             Expression::Set(set) => {
                 self.locals.insert(set.id, depth);
             }
+            Expression::This(this) => {
+                self.locals.insert(this.id, depth);
+            }
             Expression::Unary(unary) => {
                 self.locals.insert(unary.id, depth);
             }
@@ -371,6 +374,13 @@ impl Interpreter {
             Expression::Literal(literal) => self.literal(literal),
             Expression::Logical(logical) => self.logical(logical),
             Expression::Set(set) => self.set(set),
+            Expression::This(this) => self.lookup_variable(
+                &this.keyword,
+                &Variable {
+                    id: this.id,
+                    name: this.keyword.clone(),
+                },
+            ),
             Expression::Unary(unary) => self.unary(unary),
             Expression::Variable(variable) => self.lookup_variable(&variable.name, variable),
             Expression::Assign(assign) => {
@@ -483,7 +493,7 @@ impl Interpreter {
     fn get(&mut self, get: &Get) -> Result<Value, InterpreterError> {
         let object = self.expression(&*get.object)?;
         match object {
-            Value::Instance(instance) => instance.borrow().get(&get.name.lexeme),
+            Value::Instance(instance) => get_instance_field(&instance, &get.name),
             _ => Err(InterpreterError {
                 message: format!("Only instances have properties.\n[line {}]", get.name.line),
             }),
@@ -1375,5 +1385,68 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Crunch crunch crunch!\n");
+    }
+
+    #[test]
+    fn test_class_instance_print_this() {
+        let source = "
+        class Egotist {
+          speak() {
+            print this;
+          }
+        }
+
+        var method = Egotist().speak;
+        method();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Egotist instance\n");
+    }
+
+    #[test]
+    fn test_class_instance_field() {
+        let source = "
+        class Cake {
+          taste() {
+            var adjective = \"delicious\";
+            print \"The \" + this.flavor + \" cake is \" + adjective + \"!\";
+          }
+        }
+
+        var cake = Cake();
+        cake.flavor = \"German chocolate\";
+        cake.taste();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "The German chocolate cake is delicious!\n");
+    }
+
+    #[test]
+    fn test_class_instance_method_closure() {
+        let source = "
+        class Thing {
+          getCallback() {
+            fun localFunction() {
+              print this;
+            }
+
+            return localFunction;
+          }
+        }
+
+        var callback = Thing().getCallback();
+        callback();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Thing instance\n");
     }
 }

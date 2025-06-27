@@ -1,6 +1,7 @@
 use crate::{
     expression::{
-        Assign, Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, Unary, Variable,
+        Assign, Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, This, Unary,
+        Variable,
     },
     stmt::{
         BlockStmt, ClassStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt,
@@ -591,6 +592,11 @@ impl Parser {
             Ok(Expression::Grouping(Grouping {
                 id: self.next_id(),
                 expression: Box::new(expr),
+            }))
+        } else if self.match_token(&[TokenType::This]) {
+            Ok(Expression::This(This {
+                id: self.next_id(),
+                keyword: self.previous().clone(),
             }))
         } else if self.match_token(&[TokenType::Identifier]) {
             let identifier = self.previous().clone();
