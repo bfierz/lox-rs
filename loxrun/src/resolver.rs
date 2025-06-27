@@ -14,6 +14,7 @@ enum FunctionType {
     None,
     Function,
     Method,
+    Initializer,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,6 +84,16 @@ impl<'a> Resolver<'a> {
                     });
                 }
                 if let Some(val) = &expr.value {
+                    if self.current_function == FunctionType::Initializer {
+                        let name = expr.keyword.lexeme.clone();
+                        let line = expr.keyword.line;
+                        return Err(ResolverError {
+                            message: format!(
+                                "[line {}] Error at '{}': {}",
+                                line, name, "Can't return a value from an initializer."
+                            ),
+                        });
+                    }
                     self.resolve_expr(val.as_ref())?;
                 }
                 Ok(())
@@ -107,7 +118,12 @@ impl<'a> Resolver<'a> {
                 );
 
                 for method in stmt.methods.iter() {
-                    self.resolve_function(&method.params, &method.body, FunctionType::Method)?;
+                    let declaration = if method.name.lexeme == "init" {
+                        FunctionType::Initializer
+                    } else {
+                        FunctionType::Method
+                    };
+                    self.resolve_function(&method.params, &method.body, declaration)?;
                 }
                 self.end_scope();
                 self.current_class = enclosing_class;

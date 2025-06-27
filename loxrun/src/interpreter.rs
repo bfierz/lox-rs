@@ -149,8 +149,8 @@ impl Environment {
         }
     }
 
-    pub fn get(&self, name: &Token) -> Option<Value> {
-        let result = self.values.get(name.lexeme.as_str());
+    pub fn get(&self, name: &String) -> Option<Value> {
+        let result = self.values.get(name.as_str());
 
         if result.is_some() {
             return Some(result.unwrap().clone());
@@ -161,7 +161,7 @@ impl Environment {
         }
     }
 
-    pub fn get_at(&self, name: &Token, depth: usize) -> Option<Value> {
+    pub fn get_at(&self, name: &String, depth: usize) -> Option<Value> {
         if depth == 0 {
             return self.get(name);
         }
@@ -265,6 +265,7 @@ impl Interpreter {
                     Value::Callable(Callable::Function(LoxFunction::new(
                         fun_stmt.clone(),
                         self.environment.clone(),
+                        false,
                     ))),
                 );
             }
@@ -323,9 +324,14 @@ impl Interpreter {
 
                 let mut methods = HashMap::new();
                 for method in &class_stmt.methods {
+                    let is_initializer = method.name.lexeme == "init";
                     methods.insert(
                         method.name.lexeme.clone(),
-                        Box::new(LoxFunction::new(method.clone(), self.environment.clone())),
+                        Box::new(LoxFunction::new(
+                            method.clone(),
+                            self.environment.clone(),
+                            is_initializer,
+                        )),
                     );
                 }
 
@@ -412,7 +418,7 @@ impl Interpreter {
             return self
                 .environment
                 .borrow()
-                .get_at(name, *depth)
+                .get_at(&name.lexeme, *depth)
                 .ok_or(InterpreterError {
                     message: format!(
                         "Undefined variable '{}'.\n[line {}]",
@@ -420,12 +426,15 @@ impl Interpreter {
                     ),
                 });
         }
-        self.globals.borrow().get(name).ok_or(InterpreterError {
-            message: format!(
-                "Undefined variable '{}'.\n[line {}]",
-                name.lexeme, name.line
-            ),
-        })
+        self.globals
+            .borrow()
+            .get(&name.lexeme)
+            .ok_or(InterpreterError {
+                message: format!(
+                    "Undefined variable '{}'.\n[line {}]",
+                    name.lexeme, name.line
+                ),
+            })
     }
 
     fn call(&mut self, call: &Call) -> Result<Value, InterpreterError> {
@@ -468,16 +477,21 @@ impl Interpreter {
                     func.call(self, arguments)
                 }
                 Callable::Class(class) => {
-                    if !call.arguments.is_empty() {
+                    let mut arguments = Vec::new();
+                    for arg in &call.arguments {
+                        arguments.push(self.expression(arg)?);
+                    }
+                    if arguments.len() != class.arity() {
                         return Err(InterpreterError {
                             message: format!(
-                                "Class '{}' does not take any arguments.\n[line {}]",
-                                class.name, call.paren.line
+                                "Expected {} arguments but got {}.\n[line {}]",
+                                class.arity(),
+                                arguments.len(),
+                                call.paren.line
                             ),
                         });
                     }
-                    let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
-                    Ok(Value::Instance(instance))
+                    class.call(self, arguments)
                 }
             }
         } else {
@@ -1448,5 +1462,27 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Thing instance\n");
+    }
+
+    #[test]
+    fn test_class_instance_init() {
+        let source = "
+        class Foo {
+          init() {
+            print this;
+          }
+        }
+
+        var foo = Foo();
+        print foo.init();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            "Foo instance\nFoo instance\nFoo instance\n"
+        );
     }
 }

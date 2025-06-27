@@ -64,12 +64,19 @@ pub struct LoxFunction {
 
     /// The closure is an optional environment that captures the variables from the scope where the function was defined.
     pub closure: Rc<RefCell<Environment>>,
+
+    is_initializer: bool,
 }
 impl LoxFunction {
-    pub fn new(declaration: FunctionStmt, closure: Rc<RefCell<Environment>>) -> Self {
+    pub fn new(
+        declaration: FunctionStmt,
+        closure: Rc<RefCell<Environment>>,
+        is_initializer: bool,
+    ) -> Self {
         Self {
             declaration: Box::new(declaration),
-            closure: closure,
+            closure,
+            is_initializer,
         }
     }
 
@@ -83,6 +90,7 @@ impl LoxFunction {
         Self {
             declaration: self.declaration.clone(),
             closure: fun_env,
+            is_initializer: self.is_initializer,
         }
     }
 }
@@ -108,8 +116,22 @@ impl LoxCallable for LoxFunction {
         }
         let result = interpreter.execute_block(&self.declaration.body, fun_env);
         match result {
+            Ok(InterpreterResult::None) | Ok(InterpreterResult::Return(Value::Nil)) => {
+                if self.is_initializer {
+                    // If this function is an initializer, return the instance it was called on
+                    let instance = self.closure.borrow().get_at(&"this".to_string(), 0);
+                    if let Some(Value::Instance(instance)) = instance {
+                        return Ok(Value::Instance(Rc::clone(&instance)));
+                    } else {
+                        return Err(InterpreterError {
+                            message: "Initializer function called without 'this' instance."
+                                .to_string(),
+                        });
+                    }
+                }
+                Ok(Value::Nil)
+            }
             Ok(InterpreterResult::Return(value)) => Ok(value),
-            Ok(InterpreterResult::None) => Ok(Value::Nil),
             Err(err) => Err(err),
         }
     }

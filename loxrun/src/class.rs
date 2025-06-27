@@ -69,15 +69,21 @@ impl Instance {
 
 impl LoxCallable for LoxClass {
     fn arity(&self) -> usize {
-        0 // Class constructors don't take any arguments
+        self.find_method(&"init".to_string())
+            .map_or(0, |method| method.arity())
     }
 
     fn call(
         &self,
-        _interpreter: &mut Interpreter,
-        _arguments: Vec<Value>,
+        interpreter: &mut Interpreter,
+        arguments: Vec<Value>,
     ) -> Result<Value, InterpreterError> {
         let instance = Rc::new(RefCell::new(Instance::new(self.clone())));
+        let method = self.find_method(&"init".to_string());
+        if let Some(method) = method {
+            let method = method.bind(&instance);
+            method.call(interpreter, arguments)?;
+        }
         Ok(Value::Instance(instance))
     }
 
