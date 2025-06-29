@@ -58,7 +58,7 @@ impl PartialEq for LoxDynamicFunction {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct LoxFunction {
     pub declaration: Box<FunctionStmt>,
 
@@ -94,6 +94,13 @@ impl LoxFunction {
         }
     }
 }
+
+impl PartialEq for LoxFunction {
+    fn eq(&self, other: &Self) -> bool {
+        self.declaration == other.declaration && Rc::ptr_eq(&self.closure, &other.closure)
+    }
+}
+
 impl LoxCallable for LoxFunction {
     fn arity(&self) -> usize {
         self.declaration.params.len()

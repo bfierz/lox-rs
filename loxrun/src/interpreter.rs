@@ -646,6 +646,7 @@ impl Interpreter {
                 (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left != right)),
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left != right)),
                 (Value::String(left), Value::String(right)) => Ok(Value::Bool(left != right)),
+                (Value::Callable(left), Value::Callable(right)) => Ok(Value::Bool(left != right)),
                 _ => Ok(Value::Bool(true)),
             },
             TokenType::EqualEqual => match (left, right) {
@@ -653,6 +654,7 @@ impl Interpreter {
                 (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left == right)),
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left == right)),
                 (Value::String(left), Value::String(right)) => Ok(Value::Bool(left == right)),
+                (Value::Callable(left), Value::Callable(right)) => Ok(Value::Bool(left == right)),
                 _ => Ok(Value::Bool(false)),
             },
             _ => Err(InterpreterError {
