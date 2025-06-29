@@ -647,6 +647,11 @@ impl Parser {
         if self.check(&token) {
             self.advance();
             Ok(self.previous())
+        } else if self.is_at_end() {
+            let line = self.tokens[self.current].line;
+            Err(ParserError {
+                message: format!("[line {}] Error at end: {}", line, message),
+            })
         } else {
             let line = self.tokens[self.current].line;
             let name = self.tokens[self.current].lexeme.clone();
