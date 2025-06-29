@@ -13,12 +13,21 @@ pub struct ResolverError {
 enum FunctionType {
     None,
     Function,
+    Method,
+    Initializer,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ClassType {
+    None,
+    Class,
 }
 
 pub struct Resolver<'a> {
     interpreter: &'a mut Interpreter,
     scopes: Vec<HashMap<String, bool>>,
     current_function: FunctionType,
+    current_class: ClassType,
 }
 impl<'a> Resolver<'a> {
     pub fn new(interpreter: &'a mut Interpreter) -> Self {
@@ -26,6 +35,7 @@ impl<'a> Resolver<'a> {
             interpreter,
             scopes: Vec::new(),
             current_function: FunctionType::None,
+            current_class: ClassType::None,
         }
     }
 
@@ -74,6 +84,16 @@ impl<'a> Resolver<'a> {
                     });
                 }
                 if let Some(val) = &expr.value {
+                    if self.current_function == FunctionType::Initializer {
+                        let name = expr.keyword.lexeme.clone();
+                        let line = expr.keyword.line;
+                        return Err(ResolverError {
+                            message: format!(
+                                "[line {}] Error at '{}': {}",
+                                line, name, "Can't return a value from an initializer."
+                            ),
+                        });
+                    }
                     self.resolve_expr(val.as_ref())?;
                 }
                 Ok(())
@@ -82,6 +102,31 @@ impl<'a> Resolver<'a> {
                 self.declare(&expr.name)?;
                 self.define(&expr.name)?;
                 self.resolve_function(&expr.params, &expr.body, FunctionType::Function)?;
+                Ok(())
+            }
+            Stmt::Class(stmt) => {
+                let enclosing_class = self.current_class.clone();
+                self.current_class = ClassType::Class;
+
+                self.declare(&stmt.name)?;
+                self.define(&stmt.name)?;
+
+                self.begin_scope();
+                self.scopes.last_mut().unwrap().insert(
+                    "this".to_string(),
+                    true, // Mark the class as defined
+                );
+
+                for method in stmt.methods.iter() {
+                    let declaration = if method.name.lexeme == "init" {
+                        FunctionType::Initializer
+                    } else {
+                        FunctionType::Method
+                    };
+                    self.resolve_function(&method.params, &method.body, declaration)?;
+                }
+                self.end_scope();
+                self.current_class = enclosing_class;
                 Ok(())
             }
         }
@@ -148,6 +193,10 @@ impl<'a> Resolver<'a> {
                 }
                 Ok(())
             }
+            Expression::Get(get) => {
+                self.resolve_expr(get.object.as_ref())?;
+                Ok(())
+            }
             Expression::Grouping(group) => {
                 self.resolve_expr(&group.expression)?;
                 Ok(())
@@ -156,6 +205,25 @@ impl<'a> Resolver<'a> {
             Expression::Logical(logical) => {
                 self.resolve_expr(logical.left.as_ref())?;
                 self.resolve_expr(logical.right.as_ref())?;
+                Ok(())
+            }
+            Expression::Set(set) => {
+                self.resolve_expr(set.value.as_ref())?;
+                self.resolve_expr(set.object.as_ref())?;
+                Ok(())
+            }
+            Expression::This(this) => {
+                if self.current_class == ClassType::None {
+                    let name = this.keyword.lexeme.clone();
+                    let line = this.keyword.line;
+                    return Err(ResolverError {
+                        message: format!(
+                            "[line {}] Error at '{}': {}",
+                            line, name, "Can't use 'this' outside of a class."
+                        ),
+                    });
+                }
+                self.resolve_local(expr, &this.keyword)?;
                 Ok(())
             }
             Expression::Unary(unary) => {

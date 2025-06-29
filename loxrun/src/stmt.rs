@@ -2,6 +2,7 @@ use crate::{expression::Expression, tokens::Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
+    Class(ClassStmt),
     Expression(ExpressionStmt),
     Function(FunctionStmt),
     If(IfStmt),
@@ -10,6 +11,12 @@ pub enum Stmt {
     Return(ReturnStmt),
     Var(VarStmt),
     While(WhileStmt),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassStmt {
+    pub name: Token,
+    pub methods: Vec<FunctionStmt>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

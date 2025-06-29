@@ -1,8 +1,11 @@
 use crate::{
-    expression::{Assign, Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable},
+    expression::{
+        Assign, Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, This, Unary,
+        Variable,
+    },
     stmt::{
-        BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt, VarStmt,
-        WhileStmt,
+        BlockStmt, ClassStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt,
+        VarStmt, WhileStmt,
     },
     tokens::{LiteralTypes, Token, TokenType},
 };
@@ -10,7 +13,8 @@ use crate::{
 // Production rules
 // program -> statement* EOF ;
 
-// declaration -> funDecl | varDecl | statement ;
+// declaration -> classDecl | funDecl | varDecl | statement ;
+// classDecl -> "class" IDENTIFIER "{" function* "}" ;
 // funDecls -> "fun" function ;
 // function -> IDENTIFIER "(" parameters? ")" block ;
 // parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
@@ -25,7 +29,7 @@ use crate::{
 // block -> "{" declaration* "}" ;
 
 // expression -> assignment ;
-// assignment -> IDENTIFIER "=" expression | logical_or ;
+// assignment -> ( call "." )? IDENTIFIER "=" assignment | logical_or ;
 // logical_or -> logical_and ( "or" logical_and )* ;
 // logical_and -> equality ( "and" equality )* ;
 // equality -> comparison ( ( "!=" | "==" ) comparison )* ;
@@ -102,8 +106,10 @@ impl Parser {
     }
 
     pub fn declaration(&mut self) -> Result<Stmt, ParserError> {
-        if self.match_token(&[TokenType::Fun]) {
-            self.fun_declaration()
+        if self.match_token(&[TokenType::Class]) {
+            self.class_declaration()
+        } else if self.match_token(&[TokenType::Fun]) {
+            self.fun_declaration("function".to_string())
         } else if self.match_token(&[TokenType::Var]) {
             self.var_declaration()
         } else {
@@ -111,9 +117,27 @@ impl Parser {
         }
     }
 
-    pub fn fun_declaration(&mut self) -> Result<Stmt, ParserError> {
-        let name = self.consume(TokenType::Identifier, "Expect function name.")?;
-        self.consume(TokenType::LeftParen, "Expect '(' after function name.")?;
+    pub fn class_declaration(&mut self) -> Result<Stmt, ParserError> {
+        let name = self.consume(TokenType::Identifier, "Expect class name.")?;
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.")?;
+
+        let mut methods = Vec::new();
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            let stmt = self.fun_declaration("method".to_string())?;
+            if let Stmt::Function(method) = stmt {
+                methods.push(method);
+            }
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after class body.")?;
+        Ok(Stmt::Class(ClassStmt { name, methods }))
+    }
+
+    pub fn fun_declaration(&mut self, kind: String) -> Result<Stmt, ParserError> {
+        let name = self.consume_msg(TokenType::Identifier, format!("Expect {} name.", kind))?;
+        self.consume_msg(
+            TokenType::LeftParen,
+            format!("Expect '(' after {} name.", kind),
+        )?;
 
         let mut params = Vec::new();
         if !self.check(&TokenType::RightParen) {
@@ -340,6 +364,14 @@ impl Parser {
                         value: Box::new(value),
                     }));
                 }
+                Expression::Get(ref get) => {
+                    return Ok(Expression::Set(Set {
+                        id: self.next_id(),
+                        object: get.object.clone(),
+                        name: get.name.clone(),
+                        value: Box::new(value),
+                    }));
+                }
                 _ => {
                     return Err(ParserError {
                         message: format!(
@@ -481,6 +513,14 @@ impl Parser {
         loop {
             if self.match_token(&[TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_token(&[TokenType::Dot]) {
+                let name =
+                    self.consume(TokenType::Identifier, "Expect property name after '.'.")?;
+                expr = Expression::Get(Get {
+                    id: self.next_id(),
+                    object: Box::new(expr),
+                    name,
+                });
             } else {
                 break;
             }
@@ -553,6 +593,11 @@ impl Parser {
                 id: self.next_id(),
                 expression: Box::new(expr),
             }))
+        } else if self.match_token(&[TokenType::This]) {
+            Ok(Expression::This(This {
+                id: self.next_id(),
+                keyword: self.previous().clone(),
+            }))
         } else if self.match_token(&[TokenType::Identifier]) {
             let identifier = self.previous().clone();
             match identifier.literal {
@@ -595,9 +640,18 @@ impl Parser {
     }
 
     pub fn consume(&mut self, token: TokenType, message: &str) -> Result<Token, ParserError> {
+        self.consume_msg(token, message.to_string())
+    }
+
+    pub fn consume_msg(&mut self, token: TokenType, message: String) -> Result<Token, ParserError> {
         if self.check(&token) {
             self.advance();
             Ok(self.previous())
+        } else if self.is_at_end() {
+            let line = self.tokens[self.current].line;
+            Err(ParserError {
+                message: format!("[line {}] Error at end: {}", line, message),
+            })
         } else {
             let line = self.tokens[self.current].line;
             let name = self.tokens[self.current].lexeme.clone();

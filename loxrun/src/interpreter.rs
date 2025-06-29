@@ -1,10 +1,14 @@
 use crate::callable::{
     Callable, LoxBuiltinFunctionClock, LoxCallable, LoxDynamicFunction, LoxFunction,
 };
-use crate::expression::{Binary, Call, Expression, Grouping, Literal, Logical, Unary, Variable};
+use crate::class::{get_instance_field, Instance, LoxClass};
+use crate::expression::{
+    Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, Unary, Variable,
+};
 use crate::stmt::Stmt;
 use crate::tokens::{LiteralTypes, Token, TokenType};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::Write;
 use std::rc::Rc;
 
@@ -16,6 +20,7 @@ pub struct InterpreterError {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Callable(Callable),
+    Instance(Rc<RefCell<Instance>>),
     Number(f64),
     String(String),
     Bool(bool),
@@ -39,6 +44,7 @@ impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Callable(c) => write!(f, "{}", c),
+            Value::Instance(i) => write!(f, "{}", i.borrow().to_string()),
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
@@ -58,20 +64,20 @@ pub struct Environment {
     enclosing: Option<Rc<RefCell<Environment>>>,
 
     // HashMap to store variable names and their values
-    values: std::collections::HashMap<String, Value>,
+    values: HashMap<String, Value>,
 }
 impl Environment {
     pub fn new() -> Self {
         Environment {
             enclosing: None,
-            values: std::collections::HashMap::new(),
+            values: HashMap::new(),
         }
     }
 
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
         Environment {
             enclosing: Some(enclosing),
-            values: std::collections::HashMap::new(),
+            values: HashMap::new(),
         }
     }
 
@@ -143,8 +149,8 @@ impl Environment {
         }
     }
 
-    pub fn get(&self, name: &Token) -> Option<Value> {
-        let result = self.values.get(name.lexeme.as_str());
+    pub fn get(&self, name: &String) -> Option<Value> {
+        let result = self.values.get(name.as_str());
 
         if result.is_some() {
             return Some(result.unwrap().clone());
@@ -155,7 +161,7 @@ impl Environment {
         }
     }
 
-    pub fn get_at(&self, name: &Token, depth: usize) -> Option<Value> {
+    pub fn get_at(&self, name: &String, depth: usize) -> Option<Value> {
         if depth == 0 {
             return self.get(name);
         }
@@ -175,7 +181,7 @@ pub struct Interpreter {
     // Global environment for variable storage
     pub globals: Rc<RefCell<Environment>>,
     // Local variable lookup
-    pub locals: std::collections::HashMap<usize, usize>,
+    pub locals: HashMap<usize, usize>,
     // Environment for variable storage
     pub environment: Rc<RefCell<Environment>>,
     // Dedicated output stream for the interpreter
@@ -193,7 +199,7 @@ impl Interpreter {
         );
         Interpreter {
             globals: Rc::clone(&globals),
-            locals: std::collections::HashMap::new(),
+            locals: HashMap::new(),
             environment: globals,
             output: Box::new(std::io::stdout()),
         }
@@ -213,12 +219,21 @@ impl Interpreter {
             Expression::Call(call) => {
                 self.locals.insert(call.id, depth);
             }
+            Expression::Get(get) => {
+                self.locals.insert(get.id, depth);
+            }
             Expression::Grouping(grouping) => {
                 self.locals.insert(grouping.id, depth);
             }
             Expression::Literal(_) => {}
             Expression::Logical(logical) => {
                 self.locals.insert(logical.id, depth);
+            }
+            Expression::Set(set) => {
+                self.locals.insert(set.id, depth);
+            }
+            Expression::This(this) => {
+                self.locals.insert(this.id, depth);
             }
             Expression::Unary(unary) => {
                 self.locals.insert(unary.id, depth);
@@ -250,6 +265,7 @@ impl Interpreter {
                     Value::Callable(Callable::Function(LoxFunction::new(
                         fun_stmt.clone(),
                         self.environment.clone(),
+                        false,
                     ))),
                 );
             }
@@ -301,6 +317,29 @@ impl Interpreter {
                     }
                 }
             }
+            Stmt::Class(class_stmt) => {
+                self.environment
+                    .borrow_mut()
+                    .define(class_stmt.name.lexeme.clone(), Value::Nil);
+
+                let mut methods = HashMap::new();
+                for method in &class_stmt.methods {
+                    let is_initializer = method.name.lexeme == "init";
+                    methods.insert(
+                        method.name.lexeme.clone(),
+                        Box::new(LoxFunction::new(
+                            method.clone(),
+                            self.environment.clone(),
+                            is_initializer,
+                        )),
+                    );
+                }
+
+                let class = LoxClass::new(class_stmt.name.lexeme.clone(), methods);
+                self.environment
+                    .borrow_mut()
+                    .assign(&class_stmt.name, Value::Callable(Callable::Class(class)))?;
+            }
         }
         Ok(InterpreterResult::None)
     }
@@ -336,9 +375,18 @@ impl Interpreter {
         match expression {
             Expression::Binary(binary) => self.binary(binary),
             Expression::Call(call) => self.call(call),
+            Expression::Get(get) => self.get(get),
             Expression::Grouping(grouping) => self.grouping(grouping),
             Expression::Literal(literal) => self.literal(literal),
             Expression::Logical(logical) => self.logical(logical),
+            Expression::Set(set) => self.set(set),
+            Expression::This(this) => self.lookup_variable(
+                &this.keyword,
+                &Variable {
+                    id: this.id,
+                    name: this.keyword.clone(),
+                },
+            ),
             Expression::Unary(unary) => self.unary(unary),
             Expression::Variable(variable) => self.lookup_variable(&variable.name, variable),
             Expression::Assign(assign) => {
@@ -370,7 +418,7 @@ impl Interpreter {
             return self
                 .environment
                 .borrow()
-                .get_at(name, *depth)
+                .get_at(&name.lexeme, *depth)
                 .ok_or(InterpreterError {
                     message: format!(
                         "Undefined variable '{}'.\n[line {}]",
@@ -378,12 +426,15 @@ impl Interpreter {
                     ),
                 });
         }
-        self.globals.borrow().get(name).ok_or(InterpreterError {
-            message: format!(
-                "Undefined variable '{}'.\n[line {}]",
-                name.lexeme, name.line
-            ),
-        })
+        self.globals
+            .borrow()
+            .get(&name.lexeme)
+            .ok_or(InterpreterError {
+                message: format!(
+                    "Undefined variable '{}'.\n[line {}]",
+                    name.lexeme, name.line
+                ),
+            })
     }
 
     fn call(&mut self, call: &Call) -> Result<Value, InterpreterError> {
@@ -425,6 +476,23 @@ impl Interpreter {
                     }
                     func.call(self, arguments)
                 }
+                Callable::Class(class) => {
+                    let mut arguments = Vec::new();
+                    for arg in &call.arguments {
+                        arguments.push(self.expression(arg)?);
+                    }
+                    if arguments.len() != class.arity() {
+                        return Err(InterpreterError {
+                            message: format!(
+                                "Expected {} arguments but got {}.\n[line {}]",
+                                class.arity(),
+                                arguments.len(),
+                                call.paren.line
+                            ),
+                        });
+                    }
+                    class.call(self, arguments)
+                }
             }
         } else {
             return Err(InterpreterError {
@@ -433,6 +501,33 @@ impl Interpreter {
                     call.paren.line
                 ),
             });
+        }
+    }
+
+    fn get(&mut self, get: &Get) -> Result<Value, InterpreterError> {
+        let object = self.expression(&*get.object)?;
+        match object {
+            Value::Instance(instance) => get_instance_field(&instance, &get.name),
+            _ => Err(InterpreterError {
+                message: format!("Only instances have properties.\n[line {}]", get.name.line),
+            }),
+        }
+    }
+
+    fn set(&mut self, set: &Set) -> Result<Value, InterpreterError> {
+        let object = &self.expression(&*set.object)?;
+
+        match object {
+            Value::Instance(instance) => {
+                let value = self.expression(&*set.value)?;
+                instance
+                    .borrow_mut()
+                    .set(set.name.lexeme.clone(), value.clone());
+                Ok(value)
+            }
+            _ => Err(InterpreterError {
+                message: format!("Only instances have fields.\n[line {}]", set.name.line),
+            }),
         }
     }
 
@@ -551,6 +646,7 @@ impl Interpreter {
                 (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left != right)),
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left != right)),
                 (Value::String(left), Value::String(right)) => Ok(Value::Bool(left != right)),
+                (Value::Callable(left), Value::Callable(right)) => Ok(Value::Bool(left != right)),
                 _ => Ok(Value::Bool(true)),
             },
             TokenType::EqualEqual => match (left, right) {
@@ -558,6 +654,7 @@ impl Interpreter {
                 (Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left == right)),
                 (Value::Number(left), Value::Number(right)) => Ok(Value::Bool(left == right)),
                 (Value::String(left), Value::String(right)) => Ok(Value::Bool(left == right)),
+                (Value::Callable(left), Value::Callable(right)) => Ok(Value::Bool(left == right)),
                 _ => Ok(Value::Bool(false)),
             },
             _ => Err(InterpreterError {
@@ -604,7 +701,7 @@ mod tests {
         let globals = Rc::new(RefCell::new(Environment::new()));
         let mut interpreter = Interpreter {
             globals: Rc::clone(&globals),
-            locals: std::collections::HashMap::new(),
+            locals: HashMap::new(),
             environment: globals,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
@@ -785,7 +882,7 @@ mod tests {
         let globals = Rc::new(RefCell::new(Environment::new()));
         let mut interpreter = Interpreter {
             globals: Rc::clone(&globals),
-            locals: std::collections::HashMap::new(),
+            locals: HashMap::new(),
             environment: globals,
             output: Box::new(VecWriter(Rc::clone(&output))),
         };
@@ -1241,5 +1338,153 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "11\n12\n");
+    }
+
+    #[test]
+    fn test_class_declaration() {
+        let source = "
+        class DevonshireCream {
+            serveOn() {
+                return \"Scones\";
+            }
+        }
+        print DevonshireCream;
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "DevonshireCream\n");
+    }
+
+    #[test]
+    fn test_class_instance() {
+        let source = "
+        class Bagel {}
+        var bagel = Bagel();
+        print bagel;
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Bagel instance\n");
+    }
+
+    #[test]
+    fn test_class_instance_fields() {
+        let source = "
+        class Bagel {}
+        var bagel = Bagel();
+        bagel.flavor = \"Sesame\";
+        print bagel.flavor;
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Sesame\n");
+    }
+
+    #[test]
+    fn test_class_method() {
+        let source = "
+        class Bacon {
+            eat() {
+                print \"Crunch crunch crunch!\";
+            }
+        }
+        Bacon().eat();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Crunch crunch crunch!\n");
+    }
+
+    #[test]
+    fn test_class_instance_print_this() {
+        let source = "
+        class Egotist {
+          speak() {
+            print this;
+          }
+        }
+
+        var method = Egotist().speak;
+        method();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Egotist instance\n");
+    }
+
+    #[test]
+    fn test_class_instance_field() {
+        let source = "
+        class Cake {
+          taste() {
+            var adjective = \"delicious\";
+            print \"The \" + this.flavor + \" cake is \" + adjective + \"!\";
+          }
+        }
+
+        var cake = Cake();
+        cake.flavor = \"German chocolate\";
+        cake.taste();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "The German chocolate cake is delicious!\n");
+    }
+
+    #[test]
+    fn test_class_instance_method_closure() {
+        let source = "
+        class Thing {
+          getCallback() {
+            fun localFunction() {
+              print this;
+            }
+
+            return localFunction;
+          }
+        }
+
+        var callback = Thing().getCallback();
+        callback();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Thing instance\n");
+    }
+
+    #[test]
+    fn test_class_instance_init() {
+        let source = "
+        class Foo {
+          init() {
+            print this;
+          }
+        }
+
+        var foo = Foo();
+        print foo.init();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            "Foo instance\nFoo instance\nFoo instance\n"
+        );
     }
 }
