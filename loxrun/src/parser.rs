@@ -14,7 +14,7 @@ use crate::{
 // program -> statement* EOF ;
 
 // declaration -> classDecl | funDecl | varDecl | statement ;
-// classDecl -> "class" IDENTIFIER "{" function* "}" ;
+// classDecl -> "class" IDENTIFIER ( "<" IDENTIFIER )? "{" function* "}" ;
 // funDecls -> "fun" function ;
 // function -> IDENTIFIER "(" parameters? ")" block ;
 // parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
@@ -119,6 +119,16 @@ impl Parser {
 
     pub fn class_declaration(&mut self) -> Result<Stmt, ParserError> {
         let name = self.consume(TokenType::Identifier, "Expect class name.")?;
+
+        let superclass = if self.match_token(&[TokenType::Less]) {
+            Some(Box::new(Variable {
+                id: self.next_id(),
+                name: self.consume(TokenType::Identifier, "Expect superclass name.")?,
+            }))
+        } else {
+            None
+        };
+
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.")?;
 
         let mut methods = Vec::new();
@@ -129,7 +139,11 @@ impl Parser {
             }
         }
         self.consume(TokenType::RightBrace, "Expect '}' after class body.")?;
-        Ok(Stmt::Class(ClassStmt { name, methods }))
+        Ok(Stmt::Class(ClassStmt {
+            name,
+            superclass,
+            methods,
+        }))
     }
 
     pub fn fun_declaration(&mut self, kind: String) -> Result<Stmt, ParserError> {

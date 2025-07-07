@@ -318,6 +318,22 @@ impl Interpreter {
                 }
             }
             Stmt::Class(class_stmt) => {
+                let mut superclass: Option<Rc<RefCell<LoxClass>>> = None;
+                if let Some(super_class) = &class_stmt.superclass {
+                    let superclass_value =
+                        self.lookup_variable(&super_class.name, super_class.as_ref())?;
+                    if let Value::Callable(Callable::Class(class)) = superclass_value {
+                        superclass = Some(class.clone());
+                    } else {
+                        return Err(InterpreterError {
+                            message: format!(
+                                "Superclass must be a class.\n[line {}]",
+                                super_class.name.line
+                            ),
+                        });
+                    }
+                }
+
                 self.environment
                     .borrow_mut()
                     .define(class_stmt.name.lexeme.clone(), Value::Nil);
@@ -335,7 +351,11 @@ impl Interpreter {
                     );
                 }
 
-                let class = LoxClass::new(class_stmt.name.lexeme.clone(), methods);
+                let class = Rc::new(RefCell::new(LoxClass::new(
+                    class_stmt.name.lexeme.clone(),
+                    superclass,
+                    methods,
+                )));
                 self.environment
                     .borrow_mut()
                     .assign(&class_stmt.name, Value::Callable(Callable::Class(class)))?;
@@ -1486,5 +1506,25 @@ mod tests {
             result.unwrap(),
             "Foo instance\nFoo instance\nFoo instance\n"
         );
+    }
+
+    #[test]
+    fn test_class_inheritance_method_call() {
+        let source = "
+        class Doughnut {
+          cook() {
+            print \"Fry until golden brown.\";
+          }
+        }
+
+        class BostonCream < Doughnut {}
+
+        BostonCream().cook();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Fry until golden brown.\n");
     }
 }

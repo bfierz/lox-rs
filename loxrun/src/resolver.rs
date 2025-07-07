@@ -111,6 +111,23 @@ impl<'a> Resolver<'a> {
                 self.declare(&stmt.name)?;
                 self.define(&stmt.name)?;
 
+                if stmt.superclass.is_some()
+                    && stmt.name.lexeme == stmt.superclass.as_ref().unwrap().name.lexeme
+                {
+                    let name = stmt.superclass.as_ref().unwrap().name.lexeme.clone();
+                    let line = stmt.superclass.as_ref().unwrap().name.line;
+                    return Err(ResolverError {
+                        message: format!(
+                            "[line {}] Error at '{}': {}",
+                            line, name, "A class can't inherit from itself."
+                        ),
+                    });
+                }
+
+                if let Some(superclass) = &stmt.superclass {
+                    self.resolve_expr(&Expression::Variable(superclass.as_ref().clone()))?;
+                }
+
                 self.begin_scope();
                 self.scopes.last_mut().unwrap().insert(
                     "this".to_string(),
