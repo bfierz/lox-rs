@@ -21,6 +21,7 @@ enum FunctionType {
 enum ClassType {
     None,
     Class,
+    Subclass,
 }
 
 pub struct Resolver<'a> {
@@ -40,8 +41,17 @@ impl<'a> Resolver<'a> {
     }
 
     pub fn resolve_stmts(&mut self, statements: &Vec<Stmt>) -> Result<(), ResolverError> {
+        let mut error = ResolverError {
+            message: "".to_string(),
+        };
         for statement in statements {
-            self.resolve_stmt(statement)?;
+            let result = self.resolve_stmt(statement);
+            if let Err(e) = result {
+                error.message = error.message + "\n" + e.message.as_str();
+            }
+        }
+        if !error.message.is_empty() {
+            return Err(error);
         }
         Ok(())
     }
@@ -74,25 +84,15 @@ impl<'a> Resolver<'a> {
             }
             Stmt::Return(expr) => {
                 if self.current_function == FunctionType::None {
-                    let name = expr.keyword.lexeme.clone();
-                    let line = expr.keyword.line;
-                    return Err(ResolverError {
-                        message: format!(
-                            "[line {}] Error at '{}': {}",
-                            line, name, "Can't return from top-level code."
-                        ),
-                    });
+                    return self
+                        .make_resolve_error(&expr.keyword, "Can't return from top-level code.");
                 }
                 if let Some(val) = &expr.value {
                     if self.current_function == FunctionType::Initializer {
-                        let name = expr.keyword.lexeme.clone();
-                        let line = expr.keyword.line;
-                        return Err(ResolverError {
-                            message: format!(
-                                "[line {}] Error at '{}': {}",
-                                line, name, "Can't return a value from an initializer."
-                            ),
-                        });
+                        return self.make_resolve_error(
+                            &expr.keyword,
+                            "Can't return a value from an initializer.",
+                        );
                     }
                     self.resolve_expr(val.as_ref())?;
                 }
@@ -111,6 +111,28 @@ impl<'a> Resolver<'a> {
                 self.declare(&stmt.name)?;
                 self.define(&stmt.name)?;
 
+                if stmt.superclass.is_some()
+                    && stmt.name.lexeme == stmt.superclass.as_ref().unwrap().name.lexeme
+                {
+                    return self.make_resolve_error(
+                        &stmt.superclass.as_ref().unwrap().name,
+                        "A class can't inherit from itself.",
+                    );
+                }
+
+                if let Some(superclass) = &stmt.superclass {
+                    self.current_class = ClassType::Subclass;
+                    self.resolve_expr(&Expression::Variable(superclass.as_ref().clone()))?;
+                }
+
+                if stmt.superclass.is_some() {
+                    self.begin_scope();
+                    self.scopes.last_mut().unwrap().insert(
+                        "super".to_string(),
+                        true, // Mark the superclass as defined
+                    );
+                }
+
                 self.begin_scope();
                 self.scopes.last_mut().unwrap().insert(
                     "this".to_string(),
@@ -126,6 +148,10 @@ impl<'a> Resolver<'a> {
                     self.resolve_function(&method.params, &method.body, declaration)?;
                 }
                 self.end_scope();
+
+                if stmt.superclass.is_some() {
+                    self.end_scope();
+                }
                 self.current_class = enclosing_class;
                 Ok(())
             }
@@ -164,14 +190,10 @@ impl<'a> Resolver<'a> {
                 if !self.scopes.is_empty()
                     && self.scopes.last().unwrap().get(&var.name.lexeme) == Some(&false)
                 {
-                    let name = var.name.lexeme.clone();
-                    let line = var.name.line;
-                    return Err(ResolverError {
-                        message: format!(
-                            "[line {}] Error at '{}': {}",
-                            line, name, "Can't read local variable in its own initializer."
-                        ),
-                    });
+                    return self.make_resolve_error(
+                        &var.name,
+                        "Can't read local variable in its own initializer.",
+                    );
                 }
                 self.resolve_local(expr, &var.name)?;
                 Ok(())
@@ -212,16 +234,26 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(set.object.as_ref())?;
                 Ok(())
             }
+            Expression::Super(superclass) => {
+                if self.current_class == ClassType::None {
+                    return self.make_resolve_error(
+                        &superclass.keyword,
+                        "Can't use 'super' outside of a class.",
+                    );
+                } else if self.current_class != ClassType::Subclass {
+                    return self.make_resolve_error(
+                        &superclass.keyword,
+                        "Can't use 'super' in a class with no superclass.",
+                    );
+                }
+
+                self.resolve_local(expr, &superclass.keyword)?;
+                Ok(())
+            }
             Expression::This(this) => {
                 if self.current_class == ClassType::None {
-                    let name = this.keyword.lexeme.clone();
-                    let line = this.keyword.line;
-                    return Err(ResolverError {
-                        message: format!(
-                            "[line {}] Error at '{}': {}",
-                            line, name, "Can't use 'this' outside of a class."
-                        ),
-                    });
+                    return self
+                        .make_resolve_error(&this.keyword, "Can't use 'this' outside of a class.");
                 }
                 self.resolve_local(expr, &this.keyword)?;
                 Ok(())
@@ -242,14 +274,7 @@ impl<'a> Resolver<'a> {
     fn declare(&mut self, token: &Token) -> Result<(), ResolverError> {
         if let Some(scope) = self.scopes.last_mut() {
             if scope.contains_key(&token.lexeme) {
-                let name = token.lexeme.clone();
-                let line = token.line;
-                return Err(ResolverError {
-                    message: format!(
-                        "[line {}] Error at '{}': {}",
-                        line, name, "Already a variable with this name in this scope."
-                    ),
-                });
+                return self.make_resolve_error(token, "Already a variable with this name in this scope.");
             }
             scope.insert(token.lexeme.clone(), false);
         }
@@ -260,14 +285,7 @@ impl<'a> Resolver<'a> {
             if let Some(defined) = scope.get_mut(&token.lexeme) {
                 *defined = true;
             } else {
-                let name = token.lexeme.clone();
-                let line = token.line;
-                return Err(ResolverError {
-                    message: format!(
-                        "[line {}] Error at '{}': {}",
-                        line, name, "Variable not declared in this scope."
-                    ),
-                });
+                return self.make_resolve_error(token, "Variable not declared in this scope.");
             }
         }
         Ok(())
@@ -280,5 +298,13 @@ impl<'a> Resolver<'a> {
             }
         }
         Ok(())
+    }
+    fn make_resolve_error(&mut self, token: &Token, message: &str) -> Result<(), ResolverError> {
+        Err(ResolverError {
+            message: format!(
+                "[line {}] Error at '{}': {}",
+                token.line, token.lexeme, message
+            ),
+        })
     }
 }

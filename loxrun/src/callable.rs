@@ -9,7 +9,7 @@ use std::rc::Rc;
 pub enum Callable {
     DynamicFunction(LoxDynamicFunction),
     Function(LoxFunction),
-    Class(LoxClass),
+    Class(Rc<RefCell<LoxClass>>),
 }
 impl std::fmt::Display for Callable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

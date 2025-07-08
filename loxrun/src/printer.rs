@@ -41,6 +41,9 @@ pub fn pretty_print(expr: &Expression) -> String {
             let value = pretty_print(&*set.value);
             format!("{} . {} = {}", object, set.name.lexeme, value)
         }
+        Expression::Super(super_expr) => {
+            format!("super . {}", super_expr.method.lexeme)
+        }
         Expression::This(this) => {
             format!("this")
         }
@@ -90,6 +93,9 @@ pub fn rpn_print(expr: &Expression) -> String {
             let object = rpn_print(&*set.object);
             let value = rpn_print(&*set.value);
             format!("{} . {} = {}", object, set.name.lexeme, value)
+        }
+        Expression::Super(super_expr) => {
+            format!("super . {}", super_expr.method.lexeme)
         }
         Expression::This(this) => {
             format!("this")

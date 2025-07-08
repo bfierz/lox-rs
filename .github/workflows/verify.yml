@@ -42,4 +42,5 @@ jobs:
         dart tool/bin/test.dart chap10_functions -i ../../loxrun/target/debug/loxrun
         dart tool/bin/test.dart chap11_resolving -i ../../loxrun/target/debug/loxrun
         dart tool/bin/test.dart chap12_classes -i ../../loxrun/target/debug/loxrun
+        dart tool/bin/test.dart chap13_inheritance -i ../../loxrun/target/debug/loxrun
         popd

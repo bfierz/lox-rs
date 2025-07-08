@@ -1,6 +1,6 @@
 use crate::{
     expression::{
-        Assign, Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, This, Unary,
+        Assign, Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, Super, This, Unary,
         Variable,
     },
     stmt::{
@@ -14,7 +14,7 @@ use crate::{
 // program -> statement* EOF ;
 
 // declaration -> classDecl | funDecl | varDecl | statement ;
-// classDecl -> "class" IDENTIFIER "{" function* "}" ;
+// classDecl -> "class" IDENTIFIER ( "<" IDENTIFIER )? "{" function* "}" ;
 // funDecls -> "fun" function ;
 // function -> IDENTIFIER "(" parameters? ")" block ;
 // parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
@@ -38,7 +38,7 @@ use crate::{
 // factor -> unary ( ( "/" | "*" ) unary )* ;
 // unary -> ( "!" | "-" ) unary | call ;
 // call -> primary ( "(" arguments? ")" )* ;
-// primary -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER ;
+// primary -> NUMBER | STRING | "true" | "false" | "nil" | "this" | "(" expression ")" | IDENTIFIER | "super" "." IDENTIFIER;
 // arguments -> expression ( "," expression )* ;
 
 pub struct Parser {
@@ -119,6 +119,16 @@ impl Parser {
 
     pub fn class_declaration(&mut self) -> Result<Stmt, ParserError> {
         let name = self.consume(TokenType::Identifier, "Expect class name.")?;
+
+        let superclass = if self.match_token(&[TokenType::Less]) {
+            Some(Box::new(Variable {
+                id: self.next_id(),
+                name: self.consume(TokenType::Identifier, "Expect superclass name.")?,
+            }))
+        } else {
+            None
+        };
+
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.")?;
 
         let mut methods = Vec::new();
@@ -129,7 +139,11 @@ impl Parser {
             }
         }
         self.consume(TokenType::RightBrace, "Expect '}' after class body.")?;
-        Ok(Stmt::Class(ClassStmt { name, methods }))
+        Ok(Stmt::Class(ClassStmt {
+            name,
+            superclass,
+            methods,
+        }))
     }
 
     pub fn fun_declaration(&mut self, kind: String) -> Result<Stmt, ParserError> {
@@ -592,6 +606,15 @@ impl Parser {
             Ok(Expression::Grouping(Grouping {
                 id: self.next_id(),
                 expression: Box::new(expr),
+            }))
+        } else if self.match_token(&[TokenType::Super]) {
+            let keyword = self.previous();
+            self.consume(TokenType::Dot, "Expect '.' after 'super'.")?;
+            let method = self.consume(TokenType::Identifier, "Expect superclass method name.")?;
+            Ok(Expression::Super(Super {
+                id: self.next_id(),
+                keyword: keyword.clone(),
+                method: method.clone(),
             }))
         } else if self.match_token(&[TokenType::This]) {
             Ok(Expression::This(This {

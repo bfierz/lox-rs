@@ -1,4 +1,4 @@
-use crate::{expression::Expression, tokens::Token};
+use crate::{expression::Expression, expression::Variable, tokens::Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
@@ -16,6 +16,7 @@ pub enum Stmt {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassStmt {
     pub name: Token,
+    pub superclass: Option<Box<Variable>>,
     pub methods: Vec<FunctionStmt>,
 }
 
