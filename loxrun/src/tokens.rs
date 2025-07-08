@@ -26,6 +26,15 @@ impl Token {
         }
     }
 
+    pub fn new_keyword(token_type: TokenType, lexeme: &str, line: i32) -> Self {
+        Self {
+            token_type,
+            lexeme: lexeme.to_string(),
+            literal: LiteralTypes::Nil,
+            line,
+        }
+    }
+
     pub fn new_identifier(lexeme: String, line: i32) -> Self {
         Self {
             token_type: TokenType::Identifier,
@@ -50,6 +59,20 @@ impl Token {
             token_type: TokenType::Number,
             lexeme,
             literal: LiteralTypes::Number(num),
+            line,
+        }
+    }
+
+    pub fn new_bool(lexeme: String, line: i32) -> Self {
+        let boolean = lexeme.parse().unwrap();
+        Self {
+            token_type: if boolean {
+                TokenType::True
+            } else {
+                TokenType::False
+            },
+            lexeme,
+            literal: LiteralTypes::Bool(boolean),
             line,
         }
     }
