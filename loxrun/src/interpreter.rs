@@ -232,6 +232,9 @@ impl Interpreter {
             Expression::Set(set) => {
                 self.locals.insert(set.id, depth);
             }
+            Expression::Super(superclass) => {
+                self.locals.insert(superclass.id, depth);
+            }
             Expression::This(this) => {
                 self.locals.insert(this.id, depth);
             }
@@ -338,6 +341,16 @@ impl Interpreter {
                     .borrow_mut()
                     .define(class_stmt.name.lexeme.clone(), Value::Nil);
 
+                if superclass.is_some() {
+                    let new_environment = Environment::with_enclosing(self.environment.clone());
+                    self.environment = Rc::new(RefCell::new(new_environment));
+
+                    self.environment.borrow_mut().define(
+                        "super".to_string(),
+                        Value::Callable(Callable::Class(superclass.clone().unwrap())),
+                    );
+                }
+
                 let mut methods = HashMap::new();
                 for method in &class_stmt.methods {
                     let is_initializer = method.name.lexeme == "init";
@@ -353,9 +366,15 @@ impl Interpreter {
 
                 let class = Rc::new(RefCell::new(LoxClass::new(
                     class_stmt.name.lexeme.clone(),
-                    superclass,
+                    superclass.clone(),
                     methods,
                 )));
+
+                if superclass.is_some() {
+                    let enclosing = self.environment.as_ref().borrow().enclosing.clone();
+                    self.environment = enclosing.unwrap();
+                }
+
                 self.environment
                     .borrow_mut()
                     .assign(&class_stmt.name, Value::Callable(Callable::Class(class)))?;
@@ -400,6 +419,56 @@ impl Interpreter {
             Expression::Literal(literal) => self.literal(literal),
             Expression::Logical(logical) => self.logical(logical),
             Expression::Set(set) => self.set(set),
+            Expression::Super(super_expr) => {
+                let depth = self.locals.get(&super_expr.id);
+                if depth.is_none() {
+                    return Err(InterpreterError {
+                        message: format!(
+                            "Cannot use 'super' outside of a class.\n[line {}]",
+                            super_expr.keyword.line
+                        ),
+                    });
+                }
+                let super_value = self
+                    .environment
+                    .borrow()
+                    .get_at(&"super".to_string(), *depth.unwrap());
+                if super_value.is_none() {
+                    return Err(InterpreterError {
+                        message: format!(
+                            "Undefined variable '{}'.\n[line {}]",
+                            super_expr.keyword.lexeme, super_expr.keyword.line
+                        ),
+                    });
+                }
+                let this_value = self
+                    .environment
+                    .borrow()
+                    .get_at(&"this".to_string(), *depth.unwrap() - 1);
+                if let Some(Value::Instance(instance)) = this_value {
+                    if let Value::Callable(Callable::Class(super_class)) = super_value.unwrap() {
+                        let method = super_class.borrow().find_method(&super_expr.method.lexeme);
+                        if method.is_none() {
+                            return Err(InterpreterError {
+                                message: format!(
+                                    "Undefined property '{}'.\n[line {}]",
+                                    super_expr.method.lexeme, super_expr.method.line
+                                ),
+                            });
+                        }
+
+                        return Ok(Value::Callable(Callable::Function(
+                            method.unwrap().bind(&instance),
+                        )));
+                    }
+                }
+                return Err(InterpreterError {
+                    message: format!(
+                        "Superclass must be a class.\n[line {}]",
+                        super_expr.keyword.line
+                    ),
+                });
+            }
             Expression::This(this) => self.lookup_variable(
                 &this.keyword,
                 &Variable {
@@ -1526,5 +1595,33 @@ mod tests {
         let result = run(source);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Fry until golden brown.\n");
+    }
+
+    #[test]
+    fn test_class_inheritance_superclass_method_call() {
+        let source = "
+        class Doughnut {
+          cook() {
+            print \"Fry until golden brown.\";
+          }
+        }
+
+        class BostonCream < Doughnut {
+          cook() {
+            super.cook();
+            print \"Pipe full of custard and coat with chocolate.\";
+          }
+        }
+
+        BostonCream().cook();
+        "
+        .to_string();
+
+        let result = run(source);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            "Fry until golden brown.\nPipe full of custard and coat with chocolate.\n"
+        );
     }
 }

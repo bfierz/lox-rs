@@ -1,6 +1,6 @@
 use crate::{
     expression::{
-        Assign, Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, This, Unary,
+        Assign, Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, Super, This, Unary,
         Variable,
     },
     stmt::{
@@ -38,7 +38,7 @@ use crate::{
 // factor -> unary ( ( "/" | "*" ) unary )* ;
 // unary -> ( "!" | "-" ) unary | call ;
 // call -> primary ( "(" arguments? ")" )* ;
-// primary -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER ;
+// primary -> NUMBER | STRING | "true" | "false" | "nil" | "this" | "(" expression ")" | IDENTIFIER | "super" "." IDENTIFIER;
 // arguments -> expression ( "," expression )* ;
 
 pub struct Parser {
@@ -606,6 +606,15 @@ impl Parser {
             Ok(Expression::Grouping(Grouping {
                 id: self.next_id(),
                 expression: Box::new(expr),
+            }))
+        } else if self.match_token(&[TokenType::Super]) {
+            let keyword = self.previous();
+            self.consume(TokenType::Dot, "Expect '.' after 'super'.")?;
+            let method = self.consume(TokenType::Identifier, "Expect superclass method name.")?;
+            Ok(Expression::Super(Super {
+                id: self.next_id(),
+                keyword: keyword.clone(),
+                method: method.clone(),
             }))
         } else if self.match_token(&[TokenType::This]) {
             Ok(Expression::This(This {

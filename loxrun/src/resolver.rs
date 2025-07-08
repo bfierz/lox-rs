@@ -21,6 +21,7 @@ enum FunctionType {
 enum ClassType {
     None,
     Class,
+    Subclass,
 }
 
 pub struct Resolver<'a> {
@@ -40,8 +41,17 @@ impl<'a> Resolver<'a> {
     }
 
     pub fn resolve_stmts(&mut self, statements: &Vec<Stmt>) -> Result<(), ResolverError> {
+        let mut error = ResolverError {
+            message: "".to_string(),
+        };
         for statement in statements {
-            self.resolve_stmt(statement)?;
+            let result = self.resolve_stmt(statement);
+            if let Err(e) = result {
+                error.message = error.message + "\n" + e.message.as_str();
+            }
+        }
+        if !error.message.is_empty() {
+            return Err(error);
         }
         Ok(())
     }
@@ -125,7 +135,16 @@ impl<'a> Resolver<'a> {
                 }
 
                 if let Some(superclass) = &stmt.superclass {
+                    self.current_class = ClassType::Subclass;
                     self.resolve_expr(&Expression::Variable(superclass.as_ref().clone()))?;
+                }
+
+                if stmt.superclass.is_some() {
+                    self.begin_scope();
+                    self.scopes.last_mut().unwrap().insert(
+                        "super".to_string(),
+                        true, // Mark the superclass as defined
+                    );
                 }
 
                 self.begin_scope();
@@ -143,6 +162,10 @@ impl<'a> Resolver<'a> {
                     self.resolve_function(&method.params, &method.body, declaration)?;
                 }
                 self.end_scope();
+
+                if stmt.superclass.is_some() {
+                    self.end_scope();
+                }
                 self.current_class = enclosing_class;
                 Ok(())
             }
@@ -227,6 +250,30 @@ impl<'a> Resolver<'a> {
             Expression::Set(set) => {
                 self.resolve_expr(set.value.as_ref())?;
                 self.resolve_expr(set.object.as_ref())?;
+                Ok(())
+            }
+            Expression::Super(superclass) => {
+                if self.current_class == ClassType::None {
+                    let name = superclass.keyword.lexeme.clone();
+                    let line = superclass.keyword.line;
+                    return Err(ResolverError {
+                        message: format!(
+                            "[line {}] Error at '{}': {}",
+                            line, name, "Can't use 'super' outside of a class."
+                        ),
+                    });
+                } else if self.current_class != ClassType::Subclass {
+                    let name = superclass.keyword.lexeme.clone();
+                    let line = superclass.keyword.line;
+                    return Err(ResolverError {
+                        message: format!(
+                            "[line {}] Error at '{}': {}",
+                            line, name, "Can't use 'super' in a class with no superclass."
+                        ),
+                    });
+                }
+
+                self.resolve_local(expr, &superclass.keyword)?;
                 Ok(())
             }
             Expression::This(this) => {
