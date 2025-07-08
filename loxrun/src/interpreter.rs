@@ -207,39 +207,9 @@ impl Interpreter {
 
     pub fn resolve(&mut self, expr: &Expression, depth: usize) {
         match expr {
-            Expression::Variable(variable) => {
-                self.locals.insert(variable.id, depth);
-            }
-            Expression::Assign(assign) => {
-                self.locals.insert(assign.id, depth);
-            }
-            Expression::Binary(binary) => {
-                self.locals.insert(binary.id, depth);
-            }
-            Expression::Call(call) => {
-                self.locals.insert(call.id, depth);
-            }
-            Expression::Get(get) => {
-                self.locals.insert(get.id, depth);
-            }
-            Expression::Grouping(grouping) => {
-                self.locals.insert(grouping.id, depth);
-            }
             Expression::Literal(_) => {}
-            Expression::Logical(logical) => {
-                self.locals.insert(logical.id, depth);
-            }
-            Expression::Set(set) => {
-                self.locals.insert(set.id, depth);
-            }
-            Expression::Super(superclass) => {
-                self.locals.insert(superclass.id, depth);
-            }
-            Expression::This(this) => {
-                self.locals.insert(this.id, depth);
-            }
-            Expression::Unary(unary) => {
-                self.locals.insert(unary.id, depth);
+            _ => {
+                self.locals.insert(**expr, depth);
             }
         }
     }
