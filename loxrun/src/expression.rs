@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::tokens::{LiteralTypes, Token};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,4 +100,25 @@ pub struct Unary {
 pub struct Variable {
     pub id: usize,
     pub name: Token,
+}
+
+impl Deref for Expression {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Expression::Assign(assign) => &assign.id,
+            Expression::Binary(binary) => &binary.id,
+            Expression::Call(call) => &call.id,
+            Expression::Get(get) => &get.id,
+            Expression::Grouping(grouping) => &grouping.id,
+            Expression::Literal(literal) => &literal.id,
+            Expression::Logical(logical) => &logical.id,
+            Expression::Set(set) => &set.id,
+            Expression::Super(super_expr) => &super_expr.id,
+            Expression::This(this_expr) => &this_expr.id,
+            Expression::Unary(unary) => &unary.id,
+            Expression::Variable(variable) => &variable.id,
+        }
+    }
 }
