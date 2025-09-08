@@ -8,9 +8,9 @@ pub enum OpCode {
 }
 
 pub struct Chunk {
-    code: Vec<u8>,
-    constants: Vec<f64>,
-    lines: Vec<u32>,
+    pub code: Vec<u8>,
+    pub constants: Vec<f64>,
+    pub lines: Vec<u32>,
 }
 
 impl Chunk {
@@ -46,7 +46,11 @@ impl Chunk {
         }
     }
 
-    fn disassemble_instruction<T: Write + ?Sized>(&self, output: &mut T, offset: usize) -> usize {
+    pub fn disassemble_instruction<T: Write + ?Sized>(
+        &self,
+        output: &mut T,
+        offset: usize,
+    ) -> usize {
         write!(output, "{:04} ", offset).unwrap();
 
         if offset > 0 && self.lines[offset] == self.lines[offset - 1] {

@@ -1,8 +1,10 @@
 mod chunk;
 mod testing;
+mod virtualmachine;
 
 use chunk::Chunk;
+use virtualmachine::VirtualMachine;
 
 fn main() {
-    println!("Hello, world!");
+    let vm = VirtualMachine::new();
 }
