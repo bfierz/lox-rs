@@ -4,13 +4,18 @@ use std::io::Write;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpCode {
     Constant = 0,
-    Return = 1,
+    Add = 1,
+    Subtract = 2,
+    Multiply = 3,
+    Divide = 4,
+    Negate = 5,
+    Return = 6,
 }
 
 pub struct Chunk {
-    code: Vec<u8>,
-    constants: Vec<f64>,
-    lines: Vec<u32>,
+    pub code: Vec<u8>,
+    pub constants: Vec<f64>,
+    pub lines: Vec<u32>,
 }
 
 impl Chunk {
@@ -46,7 +51,11 @@ impl Chunk {
         }
     }
 
-    fn disassemble_instruction<T: Write + ?Sized>(&self, output: &mut T, offset: usize) -> usize {
+    pub fn disassemble_instruction<T: Write + ?Sized>(
+        &self,
+        output: &mut T,
+        offset: usize,
+    ) -> usize {
         write!(output, "{:04} ", offset).unwrap();
 
         if offset > 0 && self.lines[offset] == self.lines[offset - 1] {
@@ -58,6 +67,11 @@ impl Chunk {
         let instruction = unsafe { ::std::mem::transmute(self.code[offset]) };
         match instruction {
             OpCode::Constant => self.disassemble_constant_instruction(output, offset),
+            OpCode::Add => self.disassemble_simple_instruction(output, "OP_ADD", offset),
+            OpCode::Subtract => self.disassemble_simple_instruction(output, "OP_SUBTRACT", offset),
+            OpCode::Multiply => self.disassemble_simple_instruction(output, "OP_MULTIPLY", offset),
+            OpCode::Divide => self.disassemble_simple_instruction(output, "OP_DIVIDE", offset),
+            OpCode::Negate => self.disassemble_simple_instruction(output, "OP_NEGATE", offset),
             OpCode::Return => self.disassemble_simple_instruction(output, "OP_RETURN", offset),
             //_ => {
             //    writeln!(output, "Unknown opcode {}", instruction as u8).unwrap();
