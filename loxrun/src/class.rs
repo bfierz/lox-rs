@@ -2,9 +2,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use liblox::tokens::Token;
+
 use crate::callable::{Callable, LoxCallable, LoxFunction};
 use crate::interpreter::{Interpreter, InterpreterError, Value};
-use crate::tokens::Token;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoxClass {

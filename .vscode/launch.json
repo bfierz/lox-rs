@@ -7,7 +7,7 @@
             "name": "Debug",
             "program": "${fileDirname}/../target/debug/loxrun",
             "args": [
-                "${fileDirname}/../../verification/testsuite/test/closure/assign_to_shadowed_later.lox"
+                "${fileDirname}/../../verification/testsuite/test/super/super_at_top_level.lox"
             ],
             "cwd": "${workspaceRoot}",
             "sourceLanguages": [

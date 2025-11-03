@@ -1,3 +1,5 @@
+use liblox::tokens::{LiteralTypes, Token, TokenType};
+
 use crate::{
     expression::{
         Assign, Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, Super, This, Unary,
@@ -7,7 +9,6 @@ use crate::{
         BlockStmt, ClassStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt,
         VarStmt, WhileStmt,
     },
-    tokens::{LiteralTypes, Token, TokenType},
 };
 
 // Production rules
@@ -716,7 +717,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scanner::Scanner;
+    use liblox::scanner::Scanner;
 
     #[test]
     fn test_parser() {

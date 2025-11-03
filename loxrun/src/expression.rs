@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::tokens::{LiteralTypes, Token};
+use liblox::tokens::{LiteralTypes, Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
