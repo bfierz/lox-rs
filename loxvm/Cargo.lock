@@ -3,5 +3,12 @@
 version = 4
 
 [[package]]
+name = "liblox"
+version = "0.1.0"
+
+[[package]]
 name = "loxvm"
 version = "0.1.0"
+dependencies = [
+ "liblox",
+]
