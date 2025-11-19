@@ -1,5 +1,6 @@
 mod chunk;
 mod compiler;
+mod parser;
 mod testing;
 mod virtualmachine;
 
