@@ -54,6 +54,15 @@ impl Parser {
         self.emit_constant(value);
     }
 
+    fn literal(&mut self) {
+        match self.previous().token_type {
+            TokenType::Nil => self.emit_opcode(OpCode::Nil),
+            TokenType::True => self.emit_opcode(OpCode::True),
+            TokenType::False => self.emit_opcode(OpCode::False),
+            _ => {}
+        }
+    }
+
     fn grouping(&mut self) {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.")
@@ -65,6 +74,7 @@ impl Parser {
         self.parse_precedence(Precedence::Unary);
 
         match operator_token.token_type {
+            TokenType::Bang => self.emit_opcode(OpCode::Not),
             TokenType::Minus => self.emit_opcode(OpCode::Negate),
             _ => {}
         }
@@ -114,6 +124,21 @@ impl Parser {
                 infix: None,
                 precedence: Precedence::None,
             },
+            TokenType::Nil => ParseRule {
+                prefix: Some(Parser::literal),
+                infix: None,
+                precedence: Precedence::None,
+            },
+            TokenType::True => ParseRule {
+                prefix: Some(Parser::literal),
+                infix: None,
+                precedence: Precedence::None,
+            },
+            TokenType::False => ParseRule {
+                prefix: Some(Parser::literal),
+                infix: None,
+                precedence: Precedence::None,
+            },
             TokenType::LeftParen => ParseRule {
                 prefix: Some(Parser::grouping),
                 infix: None,
@@ -133,6 +158,11 @@ impl Parser {
                 prefix: None,
                 infix: Some(Parser::binary),
                 precedence: Precedence::Factor,
+            },
+            TokenType::Bang => ParseRule {
+                prefix: Some(Parser::unary),
+                infix: None,
+                precedence: Precedence::None,
             },
             TokenType::Slash => ParseRule {
                 prefix: None,

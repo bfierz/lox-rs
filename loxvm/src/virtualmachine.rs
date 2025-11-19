@@ -7,7 +7,13 @@ use crate::compiler;
 pub struct VirtualMachine {
     chunk: Chunk,
     ip: usize,
-    stack: Vec<f64>,
+    stack: Vec<Value>,
+}
+
+pub enum Value {
+    Number(f64),
+    Bool(bool),
+    Nil,
 }
 
 pub enum InterpretResult {
@@ -56,14 +62,18 @@ impl VirtualMachine {
                     });
                     return Ok(InterpretResult::Ok);
                 }
+                x if x == OpCode::Nil as u8 => self.stack.push(Value::Nil),
+                x if x == OpCode::True as u8 => self.stack.push(Value::Bool(true)),
+                x if x == OpCode::False as u8 => self.stack.push(Value::Bool(false)),
                 x if x == OpCode::Add as u8 => self.binary_op(|a, b| a + b),
                 x if x == OpCode::Subtract as u8 => self.binary_op(|a, b| a - b),
                 x if x == OpCode::Multiply as u8 => self.binary_op(|a, b| a * b),
                 x if x == OpCode::Divide as u8 => self.binary_op(|a, b| a / b),
+                x if x == OpCode::Not as u8 => self.not_op(),
                 x if x == OpCode::Negate as u8 => self.unary_op(|a| -a),
                 x if x == OpCode::Constant as u8 => {
                     let constant = self.read_constant();
-                    self.stack.push(constant);
+                    self.stack.push(Value::Number(constant));
                 }
                 _ => {
                     return Err(format!("Unknown opcode {}", instruction));
@@ -87,12 +97,44 @@ impl VirtualMachine {
     fn binary_op(&mut self, op: fn(f64, f64) -> f64) {
         let b = self.stack.pop().unwrap();
         let a = self.stack.pop().unwrap();
-        self.stack.push(op(a, b));
+        let Value::Number(b) = b else {
+            panic!("Operand must be a number.");
+        };
+        let Value::Number(a) = a else {
+            panic!("Operand must be a number.");
+        };
+        self.stack.push(Value::Number(op(a, b)));
     }
 
     fn unary_op(&mut self, op: fn(f64) -> f64) {
         let a = self.stack.pop().unwrap();
-        self.stack.push(op(a));
+        let Value::Number(a) = a else {
+            panic!("Operand must be a number.");
+        };
+        self.stack.push(Value::Number(op(a)));
+    }
+
+    fn not_op(&mut self) {
+        let a = self.stack.pop().unwrap();
+        self.stack.push(Value::Bool(Self::is_falsey(&a)));
+    }
+
+    fn is_falsey(value: &Value) -> bool {
+        match value {
+            Value::Nil => true,
+            Value::Bool(b) => !*b,
+            _ => false,
+        }
+    }
+}
+
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{}", n),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Nil => write!(f, "nil"),
+        }
     }
 }
 

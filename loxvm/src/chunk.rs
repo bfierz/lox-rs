@@ -4,12 +4,16 @@ use std::io::Write;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpCode {
     Constant = 0,
-    Add = 1,
-    Subtract = 2,
-    Multiply = 3,
-    Divide = 4,
-    Negate = 5,
-    Return = 6,
+    Nil = 1,
+    True = 2,
+    False = 3,
+    Add = 4,
+    Subtract = 5,
+    Multiply = 6,
+    Divide = 7,
+    Not = 8,
+    Negate = 9,
+    Return = 10,
 }
 
 pub struct Chunk {
@@ -67,10 +71,14 @@ impl Chunk {
         let instruction = unsafe { ::std::mem::transmute(self.code[offset]) };
         match instruction {
             OpCode::Constant => self.disassemble_constant_instruction(output, offset),
+            OpCode::Nil => self.disassemble_simple_instruction(output, "OP_NIL", offset),
+            OpCode::True => self.disassemble_simple_instruction(output, "OP_TRUE", offset),
+            OpCode::False => self.disassemble_simple_instruction(output, "OP_FALSE", offset),
             OpCode::Add => self.disassemble_simple_instruction(output, "OP_ADD", offset),
             OpCode::Subtract => self.disassemble_simple_instruction(output, "OP_SUBTRACT", offset),
             OpCode::Multiply => self.disassemble_simple_instruction(output, "OP_MULTIPLY", offset),
             OpCode::Divide => self.disassemble_simple_instruction(output, "OP_DIVIDE", offset),
+            OpCode::Not => self.disassemble_simple_instruction(output, "OP_NOT", offset),
             OpCode::Negate => self.disassemble_simple_instruction(output, "OP_NEGATE", offset),
             OpCode::Return => self.disassemble_simple_instruction(output, "OP_RETURN", offset),
             //_ => {
