@@ -86,6 +86,12 @@ impl Parser {
         self.parse_precedence(precedence);
 
         match operator_token.token_type {
+            TokenType::BangEqual => self.emit_opcodes_2(OpCode::Equal, OpCode::Not),
+            TokenType::EqualEqual => self.emit_opcode(OpCode::Equal),
+            TokenType::Greater => self.emit_opcode(OpCode::Greater),
+            TokenType::GreaterEqual => self.emit_opcodes_2(OpCode::Less, OpCode::Not),
+            TokenType::Less => self.emit_opcode(OpCode::Less),
+            TokenType::LessEqual => self.emit_opcodes_2(OpCode::Greater, OpCode::Not),
             TokenType::Plus => self.emit_opcode(OpCode::Add),
             TokenType::Minus => self.emit_opcode(OpCode::Subtract),
             TokenType::Star => self.emit_opcode(OpCode::Multiply),
@@ -154,6 +160,11 @@ impl Parser {
                 infix: Some(Parser::binary),
                 precedence: Precedence::Term,
             },
+            TokenType::Slash => ParseRule {
+                prefix: None,
+                infix: Some(Parser::binary),
+                precedence: Precedence::Factor,
+            },
             TokenType::Star => ParseRule {
                 prefix: None,
                 infix: Some(Parser::binary),
@@ -164,10 +175,35 @@ impl Parser {
                 infix: None,
                 precedence: Precedence::None,
             },
-            TokenType::Slash => ParseRule {
+            TokenType::BangEqual => ParseRule {
                 prefix: None,
                 infix: Some(Parser::binary),
-                precedence: Precedence::Factor,
+                precedence: Precedence::Equality,
+            },
+            TokenType::EqualEqual => ParseRule {
+                prefix: None,
+                infix: Some(Parser::binary),
+                precedence: Precedence::Equality,
+            },
+            TokenType::Greater => ParseRule {
+                prefix: None,
+                infix: Some(Parser::binary),
+                precedence: Precedence::Comparison,
+            },
+            TokenType::GreaterEqual => ParseRule {
+                prefix: None,
+                infix: Some(Parser::binary),
+                precedence: Precedence::Comparison,
+            },
+            TokenType::Less => ParseRule {
+                prefix: None,
+                infix: Some(Parser::binary),
+                precedence: Precedence::Comparison,
+            },
+            TokenType::LessEqual => ParseRule {
+                prefix: None,
+                infix: Some(Parser::binary),
+                precedence: Precedence::Comparison,
             },
             _ => ParseRule {
                 prefix: None,
@@ -194,6 +230,13 @@ impl Parser {
     fn emit_opcode(&mut self, opcode: OpCode) {
         self.chunk
             .write_op_code(opcode, self.previous().line as u32);
+    }
+
+    fn emit_opcodes_2(&mut self, opcode: OpCode, opcode2: OpCode) {
+        self.chunk
+            .write_op_code(opcode, self.previous().line as u32);
+        self.chunk
+            .write_op_code(opcode2, self.previous().line as u32);
     }
 
     pub fn match_token(&mut self, tokens: &[TokenType]) -> bool {
