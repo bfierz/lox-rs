@@ -1,7 +1,7 @@
 use crate::expression::Expression;
 use crate::interpreter::Interpreter;
 use crate::stmt::{BlockStmt, Stmt};
-use crate::tokens::Token;
+use liblox::tokens::Token;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -274,7 +274,8 @@ impl<'a> Resolver<'a> {
     fn declare(&mut self, token: &Token) -> Result<(), ResolverError> {
         if let Some(scope) = self.scopes.last_mut() {
             if scope.contains_key(&token.lexeme) {
-                return self.make_resolve_error(token, "Already a variable with this name in this scope.");
+                return self
+                    .make_resolve_error(token, "Already a variable with this name in this scope.");
             }
             scope.insert(token.lexeme.clone(), false);
         }

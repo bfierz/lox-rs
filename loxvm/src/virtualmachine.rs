@@ -2,6 +2,7 @@ use std::io::Write;
 
 use crate::chunk::Chunk;
 use crate::chunk::OpCode;
+use crate::compiler;
 
 pub struct VirtualMachine {
     chunk: Chunk,
@@ -27,9 +28,9 @@ impl VirtualMachine {
     pub fn interpret<T: Write + ?Sized>(
         &mut self,
         output: &mut T,
-        chunk: Chunk,
+        source: String,
     ) -> Result<InterpretResult, String> {
-        self.chunk = chunk;
+        self.chunk = compiler::compile(source)?;
         self.ip = 0;
         self.run(output)
     }
@@ -111,7 +112,8 @@ mod tests {
         chunk.write_op_code(OpCode::Return, 1);
 
         let mut vm = VirtualMachine::new();
-        vm.interpret(&mut output_writer, chunk).unwrap();
+        vm.chunk = chunk;
+        vm.run(&mut output_writer).unwrap();
 
         let result = String::from_utf8_lossy(&output.borrow()).to_string();
         assert_eq!(result, "          \n0000 0001 OP_RETURN\n");
@@ -127,7 +129,8 @@ mod tests {
         chunk.write(constant_index as u8, 1);
 
         let mut vm = VirtualMachine::new();
-        vm.interpret(&mut output_writer, chunk).unwrap();
+        vm.chunk = chunk;
+        vm.run(&mut output_writer).unwrap();
 
         let result = String::from_utf8_lossy(&output.borrow()).to_string();
         assert_eq!(result, "          \n0000 0001 OP_CONSTANT 0000 1.2\n");
@@ -145,7 +148,8 @@ mod tests {
         chunk.write_op_code(OpCode::Return, 3);
 
         let mut vm = VirtualMachine::new();
-        vm.interpret(&mut output_writer, chunk).unwrap();
+        vm.chunk = chunk;
+        vm.run(&mut output_writer).unwrap();
 
         let result = String::from_utf8_lossy(&output.borrow()).to_string();
         assert_eq!(
@@ -170,7 +174,8 @@ mod tests {
         chunk.write_op_code(OpCode::Return, 2);
 
         let mut vm = VirtualMachine::new();
-        vm.interpret(&mut output_writer, chunk).unwrap();
+        vm.chunk = chunk;
+        vm.run(&mut output_writer).unwrap();
 
         let result = String::from_utf8_lossy(&output.borrow()).to_string();
         assert_eq!(
@@ -214,7 +219,8 @@ mod tests {
         chunk.write_op_code(OpCode::Return, 123);
 
         let mut vm = VirtualMachine::new();
-        vm.interpret(&mut output_writer, chunk).unwrap();
+        vm.chunk = chunk;
+        vm.run(&mut output_writer).unwrap();
 
         let result = String::from_utf8_lossy(&output.borrow()).to_string();
         assert_eq!(

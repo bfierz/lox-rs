@@ -10,13 +10,11 @@ mod interpreter;
 mod parser;
 mod printer;
 mod resolver;
-mod scanner;
 mod stmt;
-mod tokens;
 
+use liblox::scanner::Scanner;
 use parser::Parser;
 use resolver::Resolver;
-use scanner::Scanner;
 
 // Define exit codes constants
 const EXIT_CODE_OK: i32 = 0;

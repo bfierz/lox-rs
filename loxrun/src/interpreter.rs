@@ -6,7 +6,7 @@ use crate::expression::{
     Binary, Call, Expression, Get, Grouping, Literal, Logical, Set, Unary, Variable,
 };
 use crate::stmt::Stmt;
-use crate::tokens::{LiteralTypes, Token, TokenType};
+use liblox::tokens::{LiteralTypes, Token, TokenType};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Write;
@@ -728,8 +728,9 @@ mod tests {
     use super::*;
     use crate::parser::Parser;
     use crate::resolver::Resolver;
-    use crate::scanner::Scanner;
-    use crate::{stmt::PrintStmt, tokens::Token};
+    use crate::stmt::PrintStmt;
+    use liblox::scanner::Scanner;
+    use liblox::tokens::Token;
     use std::io;
     use std::io::Write;
 

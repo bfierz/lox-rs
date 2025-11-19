@@ -1,4 +1,5 @@
-use crate::{expression::Expression, expression::Variable, tokens::Token};
+use crate::{expression::Expression, expression::Variable};
+use liblox::tokens::Token;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
