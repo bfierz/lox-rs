@@ -16,14 +16,24 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build
+    - name: Build [loxrun]
       run: |
         pushd loxrun
         cargo build --verbose
         popd
-    - name: Run tests
+    - name: Run tests [loxrun]
       run: |
         pushd loxrun
+        cargo test --verbose
+        popd
+    - name: Build [loxvm]
+      run: |
+        pushd loxvm
+        cargo build --verbose
+        popd
+    - name: Run tests [loxvm]
+      run: |
+        pushd loxvm
         cargo test --verbose
         popd
     - name: Install Dart
@@ -43,4 +53,6 @@ jobs:
         dart tool/bin/test.dart chap11_resolving -i ../../loxrun/target/debug/loxrun
         dart tool/bin/test.dart chap12_classes -i ../../loxrun/target/debug/loxrun
         dart tool/bin/test.dart chap13_inheritance -i ../../loxrun/target/debug/loxrun
+        dart tool/bin/test.dart chap17_compiling -i ../../loxvm/target/debug/loxvm
+        dart tool/bin/test.dart chap18_types -i ../../loxvm/target/debug/loxvm
         popd
