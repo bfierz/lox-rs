@@ -55,4 +55,5 @@ jobs:
         dart tool/bin/test.dart chap13_inheritance -i ../../loxrun/target/debug/loxrun
         dart tool/bin/test.dart chap17_compiling -i ../../loxvm/target/debug/loxvm
         dart tool/bin/test.dart chap18_types -i ../../loxvm/target/debug/loxvm
+        dart tool/bin/test.dart chap19_strings -i ../../loxvm/target/debug/loxvm
         popd
