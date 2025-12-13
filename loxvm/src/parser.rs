@@ -2,6 +2,7 @@ use liblox::tokens::{Token, TokenType};
 
 use crate::chunk::Chunk;
 use crate::chunk::OpCode;
+use crate::chunk::Value;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -51,7 +52,7 @@ impl Parser {
 
     fn number(&mut self) {
         let value: f64 = self.previous().lexeme.parse().unwrap();
-        self.emit_constant(value);
+        self.emit_constant(Value::Number(value));
     }
 
     fn literal(&mut self) {
@@ -217,7 +218,7 @@ impl Parser {
         self.emit_opcode(OpCode::Return);
     }
 
-    fn emit_constant(&mut self, value: f64) {
+    fn emit_constant(&mut self, value: Value) {
         let constant_index = self.chunk.add_constant(value);
         if constant_index > u8::MAX as usize {
             panic!("Too many constants in one chunk.");

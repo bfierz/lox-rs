@@ -2,18 +2,13 @@ use std::io::Write;
 
 use crate::chunk::Chunk;
 use crate::chunk::OpCode;
+use crate::chunk::Value;
 use crate::compiler;
 
 pub struct VirtualMachine {
     chunk: Chunk,
     ip: usize,
     stack: Vec<Value>,
-}
-
-pub enum Value {
-    Number(f64),
-    Bool(bool),
-    Nil,
 }
 
 pub enum InterpretResult {
@@ -68,15 +63,15 @@ impl VirtualMachine {
                 x if x == OpCode::Equal as u8 => self.equal_op(),
                 x if x == OpCode::Greater as u8 => self.binary_op(|a, b| Value::Bool(a > b)),
                 x if x == OpCode::Less as u8 => self.binary_op(|a, b| Value::Bool(a < b)),
-                x if x == OpCode::Add as u8 => self.binary_op(|a, b| Value::Number(a + b)),
+                x if x == OpCode::Add as u8 => self.binary_op_add(),
                 x if x == OpCode::Subtract as u8 => self.binary_op(|a, b| Value::Number(a - b)),
                 x if x == OpCode::Multiply as u8 => self.binary_op(|a, b| Value::Number(a * b)),
                 x if x == OpCode::Divide as u8 => self.binary_op(|a, b| Value::Number(a / b)),
                 x if x == OpCode::Not as u8 => self.not_op(),
                 x if x == OpCode::Negate as u8 => self.unary_op(|a| -a),
                 x if x == OpCode::Constant as u8 => {
-                    let constant = self.read_constant();
-                    self.stack.push(Value::Number(constant));
+                    let constant = self.read_constant().clone();
+                    self.stack.push(constant);
                 }
                 _ => {
                     return Err(format!("Unknown opcode {}", instruction));
@@ -92,9 +87,9 @@ impl VirtualMachine {
         instr
     }
 
-    fn read_constant(&mut self) -> f64 {
+    fn read_constant(&mut self) -> &Value {
         let constant_index = self.read_byte() as usize;
-        self.chunk.constants[constant_index]
+        &self.chunk.constants[constant_index]
     }
 
     fn binary_op(&mut self, op: fn(f64, f64) -> Value) {
@@ -107,6 +102,22 @@ impl VirtualMachine {
             panic!("Operand must be a number.");
         };
         self.stack.push(op(a, b));
+    }
+
+    fn binary_op_add(&mut self) {
+        let b = self.stack.pop().unwrap();
+        let a = self.stack.pop().unwrap();
+        match (a, b) {
+            (Value::Number(a), Value::Number(b)) => {
+                self.stack.push(Value::Number(a + b));
+            }
+            (Value::String(a), Value::String(b)) => {
+                self.stack.push(Value::String(a + &b));
+            }
+            _ => {
+                panic!("Operands must be two numbers or two strings.");
+            }
+        }
     }
 
     fn binary_logic_op(&mut self, op: fn(bool, bool) -> bool) {
@@ -137,14 +148,15 @@ impl VirtualMachine {
     fn equal_op(&mut self) {
         let b = self.stack.pop().unwrap();
         let a = self.stack.pop().unwrap();
-        self.stack.push(Value::Bool(self.valuesEqual(&a, &b)));
+        self.stack.push(Value::Bool(self.values_equal(&a, &b)));
     }
 
-    fn valuesEqual(&self, a: &Value, b: &Value) -> bool {
+    fn values_equal(&self, a: &Value, b: &Value) -> bool {
         match (a, b) {
             (Value::Nil, Value::Nil) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
             _ => false,
         }
     }
@@ -163,6 +175,7 @@ impl std::fmt::Display for Value {
         match self {
             Value::Number(n) => write!(f, "{}", n),
             Value::Bool(b) => write!(f, "{}", b),
+            Value::String(s) => write!(f, "\"{}\"", s),
             Value::Nil => write!(f, "nil"),
         }
     }
@@ -196,7 +209,7 @@ mod tests {
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
         let mut chunk = Chunk::new();
-        let constant_index = chunk.add_constant(1.2);
+        let constant_index = chunk.add_constant(Value::Number(1.2));
         chunk.write_op_code(OpCode::Constant, 1);
         chunk.write(constant_index as u8, 1);
 
@@ -213,7 +226,7 @@ mod tests {
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
         let mut chunk = Chunk::new();
-        let constant_index = chunk.add_constant(1.2);
+        let constant_index = chunk.add_constant(Value::Number(1.2));
         chunk.write_op_code(OpCode::Constant, 1);
         chunk.write(constant_index as u8, 1);
         chunk.write_op_code(OpCode::Negate, 2);
@@ -231,13 +244,14 @@ mod tests {
             \n          [ -1.2 ]\n0003 0003 OP_RETURN\n-1.2\n"
         );
     }
+
     #[test]
-    fn test_add_op() {
+    fn test_add_number_op() {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
         let mut chunk = Chunk::new();
-        let constant_index = chunk.add_constant(1.2);
+        let constant_index = chunk.add_constant(Value::Number(1.2));
         chunk.write_op_code(OpCode::Constant, 1);
         chunk.write(constant_index as u8, 1);
         chunk.write_op_code(OpCode::Constant, 1);
@@ -265,6 +279,40 @@ mod tests {
     }
 
     #[test]
+    fn test_add_string_op() {
+        let output = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
+
+        let mut chunk = Chunk::new();
+        let constant_index_a = chunk.add_constant(Value::String("Hello, ".into()));
+        let constant_index_b = chunk.add_constant(Value::String("World!".into()));
+        chunk.write_op_code(OpCode::Constant, 1);
+        chunk.write(constant_index_a as u8, 1);
+        chunk.write_op_code(OpCode::Constant, 1);
+        chunk.write(constant_index_b as u8, 1);
+        chunk.write_op_code(OpCode::Add, 1);
+        chunk.write_op_code(OpCode::Return, 2);
+
+        let mut vm = VirtualMachine::new();
+        vm.chunk = chunk;
+        vm.run(&mut output_writer).unwrap();
+
+        let result = String::from_utf8_lossy(&output.borrow()).to_string();
+        assert_eq!(
+            result,
+            "          \
+            \n0000 0001 OP_CONSTANT 0000 \"Hello, \"\
+            \n          [ \"Hello, \" ]\
+            \n0002    | OP_CONSTANT 0001 \"World!\"\
+            \n          [ \"Hello, \" ][ \"World!\" ]\
+            \n0004    | OP_ADD\
+            \n          [ \"Hello, World!\" ]\
+            \n0005 0002 OP_RETURN\
+            \n\"Hello, World!\"\n"
+        );
+    }
+
+    #[test]
     fn test_arithmatic() {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
@@ -272,17 +320,17 @@ mod tests {
         let mut chunk = Chunk::new();
 
         //  -( (1.2 + 3.4) / 5.6 )
-        let constant_a = chunk.add_constant(1.2);
+        let constant_a = chunk.add_constant(Value::Number(1.2));
         chunk.write_op_code(OpCode::Constant, 123);
         chunk.write(constant_a as u8, 123);
 
-        let constant_b = chunk.add_constant(3.4);
+        let constant_b = chunk.add_constant(Value::Number(3.4));
         chunk.write_op_code(OpCode::Constant, 123);
         chunk.write(constant_b as u8, 123);
 
         chunk.write_op_code(OpCode::Add, 123);
 
-        let constant_c = chunk.add_constant(5.6);
+        let constant_c = chunk.add_constant(Value::Number(5.6));
         chunk.write_op_code(OpCode::Constant, 123);
         chunk.write(constant_c as u8, 123);
 

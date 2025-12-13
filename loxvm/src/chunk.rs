@@ -19,9 +19,17 @@ pub enum OpCode {
     Return = 13,
 }
 
+#[derive(Debug, Clone)]
+pub enum Value {
+    Number(f64),
+    String(String),
+    Bool(bool),
+    Nil,
+}
+
 pub struct Chunk {
     pub code: Vec<u8>,
-    pub constants: Vec<f64>,
+    pub constants: Vec<Value>,
     pub lines: Vec<u32>,
 }
 
@@ -44,7 +52,7 @@ impl Chunk {
         self.lines.push(line);
     }
 
-    pub fn add_constant(&mut self, value: f64) -> usize {
+    pub fn add_constant(&mut self, value: Value) -> usize {
         self.constants.push(value);
         self.constants.len() - 1
     }
@@ -100,7 +108,7 @@ impl Chunk {
         offset: usize,
     ) -> usize {
         let constant_index = self.code[offset + 1] as usize;
-        let constant_value = self.constants[constant_index];
+        let constant_value = &self.constants[constant_index];
         writeln!(
             output,
             "OP_CONSTANT {:04} {}",
@@ -146,7 +154,7 @@ mod tests {
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
         let mut chunk = Chunk::new();
-        let constant_index = chunk.add_constant(1.2);
+        let constant_index = chunk.add_constant(Value::Number(1.2));
         chunk.write_op_code(OpCode::Constant, 1);
         chunk.write(constant_index as u8, 1);
         chunk.disassemble(&mut output_writer, "test chunk");
