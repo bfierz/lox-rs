@@ -1,5 +1,6 @@
 mod chunk;
 mod compiler;
+mod hash_table;
 mod parser;
 mod testing;
 mod virtualmachine;
