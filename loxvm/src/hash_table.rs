@@ -6,6 +6,7 @@ pub struct HashTable {
     entries: Vec<(Option<Value>, Option<Value>)>,
     capacity: usize,
     count: usize,
+    occupied: usize,
 }
 
 impl HashTable {
@@ -14,6 +15,7 @@ impl HashTable {
             entries: vec![(None, None); capacity],
             capacity,
             count: 0,
+            occupied: 0,
         }
     }
 
@@ -23,9 +25,13 @@ impl HashTable {
         }
 
         if let Some((index, set)) = self.find_entry(&key) {
+            let was_empty = self.entries[index].0.is_none();
             self.entries[index] = (Some(key), Some(value));
             if set == false {
                 self.count += 1;
+                if was_empty {
+                    self.occupied += 1;
+                }
             }
         } else {
             panic!("HashTable is full.");
@@ -44,18 +50,42 @@ impl HashTable {
         }
     }
 
+    pub fn remove(&mut self, key: &Value) -> bool {
+        if self.count == 0 {
+            return false;
+        }
+        if let Some((index, found)) = self.find_entry(key) {
+            if found {
+                self.entries[index] = (None, Some(Value::Nil)); // Tombstone
+                self.count -= 1;
+                return true;
+            }
+        }
+        false
+    }
+
     /// Linear probing to find the index of the key
     /// Returns Some((index, found)) where found is true if the key exists
     /// Returns None if the table is full
     fn find_entry(&self, key: &Value) -> Option<(usize, bool)> {
         let key_hash = hash_fnv1a(key);
         let mut index = (key_hash % self.capacity as u64) as usize;
+        let mut tombstone_index: Option<usize> = None;
         for _ in 0..self.capacity {
-            let (ref entry_key, _) = self.entries[index];
+            let (ref entry_key, ref entry_value) = self.entries[index];
             if entry_key.is_none() {
-                return Some((index, false));
-            }
-            if hash_fnv1a(entry_key.as_ref().unwrap()) == key_hash {
+                if Some(Value::Nil) == *entry_value {
+                    // Tombstone found, continue probing
+                    tombstone_index = Some(index);
+                } else {
+                    // Empty slot found
+                    if tombstone_index.is_some() {
+                        return Some((tombstone_index.unwrap(), false));
+                    } else {
+                        return Some((index, false));
+                    }
+                }
+            } else if hash_fnv1a(entry_key.as_ref().unwrap()) == key_hash {
                 return Some((index, true));
             }
             index = (index + 1) % self.capacity;
@@ -141,6 +171,19 @@ mod tests {
         let table = HashTable::new(16);
         let key = Value::String("nonexistent".into());
         assert_eq!(table.get(&key), None);
+    }
+
+    #[test]
+    fn test_hash_table_remove() {
+        let mut table = HashTable::new(16);
+        let key = Value::String("key".into());
+        let value = Value::Number(42.0);
+        table.insert(key.clone(), value.clone());
+        assert_eq!(table.get(&key), Some(&value));
+        table.remove(&key);
+        assert_eq!(table.get(&key), None);
+        assert_eq!(table.count, 0);
+        assert_eq!(table.occupied, 1); // Tombstone remains
     }
 
     #[test]
