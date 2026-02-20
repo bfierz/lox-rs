@@ -3,6 +3,9 @@ use liblox::tokens::{Token, TokenType};
 use crate::chunk::Chunk;
 use crate::chunk::OpCode;
 use crate::chunk::Value;
+use crate::hash_table::HashTable;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -37,10 +40,10 @@ struct ParseRule {
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
+    pub fn new(tokens: Vec<Token>, strings: Rc<RefCell<HashTable>>) -> Self {
         Parser {
             tokens,
-            chunk: Chunk::new(),
+            chunk: Chunk::new(strings),
             current: 0,
             current_id: 0,
         }
@@ -48,6 +51,15 @@ impl Parser {
 
     pub fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment);
+    }
+
+    fn string(&mut self) {
+        let value = self.previous().lexeme.clone();
+        self.chunk
+            .strings
+            .borrow_mut()
+            .insert(Value::String(value.clone()), Value::String(value.clone()));
+        self.emit_constant(Value::String(value));
     }
 
     fn number(&mut self) {
@@ -126,6 +138,11 @@ impl Parser {
 
     fn get_rule(&self, token_type: &TokenType) -> ParseRule {
         match token_type {
+            TokenType::String => ParseRule {
+                prefix: Some(Parser::string),
+                infix: None,
+                precedence: Precedence::None,
+            },
             TokenType::Number => ParseRule {
                 prefix: Some(Parser::number),
                 infix: None,

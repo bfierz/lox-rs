@@ -1,4 +1,6 @@
-use std::io::Write;
+use crate::hash_table::HashTable;
+
+use std::{cell::RefCell, hash::Hash, io::Write, rc::Rc};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,14 +33,16 @@ pub struct Chunk {
     pub code: Vec<u8>,
     pub constants: Vec<Value>,
     pub lines: Vec<u32>,
+    pub strings: Rc<RefCell<HashTable>>,
 }
 
 impl Chunk {
-    pub fn new() -> Self {
+    pub fn new(strings: Rc<RefCell<HashTable>>) -> Self {
         Self {
             code: Vec::new(),
             constants: Vec::new(),
             lines: Vec::new(),
+            strings,
         }
     }
 
@@ -141,7 +145,8 @@ mod tests {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
-        let mut chunk = Chunk::new();
+        let strings = Rc::new(RefCell::new(HashTable::new(64)));
+        let mut chunk = Chunk::new(Rc::clone(&strings));
         chunk.write_op_code(OpCode::Return, 1);
         chunk.disassemble(&mut output_writer, "test chunk");
 
@@ -153,7 +158,8 @@ mod tests {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
-        let mut chunk = Chunk::new();
+        let strings = Rc::new(RefCell::new(HashTable::new(64)));
+        let mut chunk = Chunk::new(Rc::clone(&strings));
         let constant_index = chunk.add_constant(Value::Number(1.2));
         chunk.write_op_code(OpCode::Constant, 1);
         chunk.write(constant_index as u8, 1);

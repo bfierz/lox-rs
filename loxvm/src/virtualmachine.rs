@@ -4,11 +4,15 @@ use crate::chunk::Chunk;
 use crate::chunk::OpCode;
 use crate::chunk::Value;
 use crate::compiler;
+use crate::hash_table::HashTable;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct VirtualMachine {
     chunk: Chunk,
     ip: usize,
     stack: Vec<Value>,
+    strings: Rc<RefCell<HashTable>>,
 }
 
 pub enum InterpretResult {
@@ -19,10 +23,12 @@ pub enum InterpretResult {
 
 impl VirtualMachine {
     pub fn new() -> Self {
+        let strings = Rc::new(RefCell::new(HashTable::new(64)));
         Self {
-            chunk: Chunk::new(),
+            chunk: Chunk::new(Rc::clone(&strings)),
             ip: 0,
             stack: Vec::new(),
+            strings,
         }
     }
 
@@ -31,7 +37,7 @@ impl VirtualMachine {
         output: &mut T,
         source: String,
     ) -> Result<InterpretResult, String> {
-        self.chunk = compiler::compile(source)?;
+        self.chunk = compiler::compile(source, Rc::clone(&self.strings))?;
         self.ip = 0;
         self.run(output)
     }
@@ -112,7 +118,11 @@ impl VirtualMachine {
                 self.stack.push(Value::Number(a + b));
             }
             (Value::String(a), Value::String(b)) => {
-                self.stack.push(Value::String(a + &b));
+                let concat = Value::String(a + &b);
+                self.strings
+                    .borrow_mut()
+                    .insert(concat.clone(), concat.clone());
+                self.stack.push(concat);
             }
             _ => {
                 panic!("Operands must be two numbers or two strings.");
@@ -193,7 +203,8 @@ mod tests {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
-        let mut chunk = Chunk::new();
+        let strings = Rc::new(RefCell::new(HashTable::new(64)));
+        let mut chunk = Chunk::new(Rc::clone(&strings));
         chunk.write_op_code(OpCode::Return, 1);
 
         let mut vm = VirtualMachine::new();
@@ -208,7 +219,8 @@ mod tests {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
-        let mut chunk = Chunk::new();
+        let strings = Rc::new(RefCell::new(HashTable::new(64)));
+        let mut chunk = Chunk::new(Rc::clone(&strings));
         let constant_index = chunk.add_constant(Value::Number(1.2));
         chunk.write_op_code(OpCode::Constant, 1);
         chunk.write(constant_index as u8, 1);
@@ -225,7 +237,8 @@ mod tests {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
-        let mut chunk = Chunk::new();
+        let strings = Rc::new(RefCell::new(HashTable::new(64)));
+        let mut chunk = Chunk::new(Rc::clone(&strings));
         let constant_index = chunk.add_constant(Value::Number(1.2));
         chunk.write_op_code(OpCode::Constant, 1);
         chunk.write(constant_index as u8, 1);
@@ -250,7 +263,8 @@ mod tests {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
-        let mut chunk = Chunk::new();
+        let strings = Rc::new(RefCell::new(HashTable::new(64)));
+        let mut chunk = Chunk::new(Rc::clone(&strings));
         let constant_index = chunk.add_constant(Value::Number(1.2));
         chunk.write_op_code(OpCode::Constant, 1);
         chunk.write(constant_index as u8, 1);
@@ -283,7 +297,8 @@ mod tests {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
-        let mut chunk = Chunk::new();
+        let strings = Rc::new(RefCell::new(HashTable::new(64)));
+        let mut chunk = Chunk::new(Rc::clone(&strings));
         let constant_index_a = chunk.add_constant(Value::String("Hello, ".into()));
         let constant_index_b = chunk.add_constant(Value::String("World!".into()));
         chunk.write_op_code(OpCode::Constant, 1);
@@ -317,7 +332,8 @@ mod tests {
         let output = Rc::new(RefCell::new(Vec::<u8>::new()));
         let mut output_writer = Box::new(VecWriter(Rc::clone(&output)));
 
-        let mut chunk = Chunk::new();
+        let strings = Rc::new(RefCell::new(HashTable::new(64)));
+        let mut chunk = Chunk::new(Rc::clone(&strings));
 
         //  -( (1.2 + 3.4) / 5.6 )
         let constant_a = chunk.add_constant(Value::Number(1.2));
