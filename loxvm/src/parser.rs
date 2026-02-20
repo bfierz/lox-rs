@@ -53,6 +53,31 @@ impl Parser {
         self.parse_precedence(Precedence::Assignment);
     }
 
+    pub fn declaration(&mut self) {
+        self.statement();
+    }
+
+    pub fn statement(&mut self) {
+        if self.match_token(&[TokenType::Print]) {
+            self.print_statement();
+        } else {
+            self.expression_statement();
+        }
+    }
+
+    pub fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.")
+            .unwrap();
+        self.emit_opcode(OpCode::Print);
+    }
+
+    pub fn expression_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.")
+            .unwrap();
+        self.emit(OpCode::Pop);
+
     fn string(&mut self) {
         let value = self.previous().lexeme.clone();
         self.chunk
@@ -301,11 +326,7 @@ impl Parser {
     }
 
     pub fn check(&self, token: &TokenType) -> bool {
-        if self.is_at_end() {
-            false
-        } else {
-            self.tokens[self.current].token_type == *token
-        }
+        self.tokens[self.current].token_type == *token
     }
 
     pub fn is_at_end(&self) -> bool {

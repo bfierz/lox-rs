@@ -12,7 +12,9 @@ pub fn compile(
 ) -> Result<crate::chunk::Chunk, String> {
     let mut scanner = Scanner::new(source);
     let mut parser = Parser::new(scanner.scan_tokens().to_vec(), strings);
-    parser.expression();
-    parser.emit_return();
+
+    while !parser.match_token(&[TokenType::Eof]) {
+        parser.declaration();
+    }
     Ok(parser.chunk)
 }

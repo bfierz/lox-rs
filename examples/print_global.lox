@@ -1,0 +1,6 @@
+fun showVariable() {
+  print global;
+}
+
+var global = "after";
+showVariable();
