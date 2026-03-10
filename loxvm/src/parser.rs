@@ -132,7 +132,14 @@ impl Parser {
     }
 
     fn string(&mut self, can_assign: bool) {
-        let value = self.previous().lexeme.clone();
+        let value = self
+            .previous()
+            .lexeme
+            .strip_prefix('"')
+            .unwrap_or(&self.previous().lexeme)
+            .strip_suffix('"')
+            .unwrap_or(&self.previous().lexeme)
+            .to_string();
         self.chunk
             .strings
             .borrow_mut()
