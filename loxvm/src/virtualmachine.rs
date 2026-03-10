@@ -84,6 +84,15 @@ impl VirtualMachine {
                         .borrow_mut()
                         .insert(name, self.stack.pop().unwrap());
                 }
+                x if x == OpCode::SetGlobal as u8 => {
+                    let name = self.read_constant().clone();
+                    if self.globals.borrow().get(&name).is_none() {
+                        return Err(format!("Undefined variable '{}'.", name));
+                    }
+                    self.globals
+                        .borrow_mut()
+                        .insert(name, self.stack.pop().unwrap());
+                }
                 x if x == OpCode::Equal as u8 => self.equal_op(),
                 x if x == OpCode::Greater as u8 => self.binary_op(|a, b| Value::Bool(a > b)),
                 x if x == OpCode::Less as u8 => self.binary_op(|a, b| Value::Bool(a < b)),

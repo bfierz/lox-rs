@@ -35,8 +35,8 @@ enum Precedence {
 }
 
 struct ParseRule {
-    prefix: Option<fn(&mut Parser)>,
-    infix: Option<fn(&mut Parser)>,
+    prefix: Option<fn(&mut Parser, can_assign: bool)>,
+    infix: Option<fn(&mut Parser, can_assign: bool)>,
     precedence: Precedence,
 }
 
@@ -131,7 +131,7 @@ impl Parser {
         }
     }
 
-    fn string(&mut self) {
+    fn string(&mut self, can_assign: bool) {
         let value = self.previous().lexeme.clone();
         self.chunk
             .strings
@@ -140,12 +140,12 @@ impl Parser {
         self.emit_constant(Value::String(value));
     }
 
-    fn number(&mut self) {
+    fn number(&mut self, can_assign: bool) {
         let value: f64 = self.previous().lexeme.parse().unwrap();
         self.emit_constant(Value::Number(value));
     }
 
-    fn literal(&mut self) {
+    fn literal(&mut self, can_assign: bool) {
         match self.previous().token_type {
             TokenType::Nil => self.emit_opcode(OpCode::Nil),
             TokenType::True => self.emit_opcode(OpCode::True),
@@ -154,13 +154,13 @@ impl Parser {
         }
     }
 
-    fn grouping(&mut self) {
+    fn grouping(&mut self, can_assign: bool) {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.")
             .unwrap();
     }
 
-    fn unary(&mut self) {
+    fn unary(&mut self, can_assign: bool) {
         let operator_token = self.previous();
         self.parse_precedence(Precedence::Unary);
 
@@ -171,7 +171,7 @@ impl Parser {
         }
     }
 
-    fn binary(&mut self) {
+    fn binary(&mut self, can_assign: bool) {
         let operator_token = self.previous();
         let precedence = self.get_rule(&operator_token.token_type).precedence;
         self.parse_precedence(precedence);
@@ -191,14 +191,19 @@ impl Parser {
         }
     }
 
-    fn variable(&mut self) {
+    fn variable(&mut self, can_assign: bool) {
         let name = self.previous().lexeme.clone();
-        self.named_variable(&name);
+        self.named_variable(&name, can_assign);
     }
 
-    fn named_variable(&mut self, name: &str) {
+    fn named_variable(&mut self, name: &str, can_assign: bool) {
         let arg = self.identifier_constant(name);
-        self.emit_opcode(OpCode::GetGlobal);
+        if can_assign && self.match_token(&[TokenType::Equal]) {
+            self.expression();
+            self.emit_opcode(OpCode::SetGlobal);
+        } else {
+            self.emit_opcode(OpCode::GetGlobal);
+        }
         self.chunk.write(arg as u8, self.previous().line as u32);
     }
 
@@ -208,9 +213,11 @@ impl Parser {
             .get_rule(&self.previous().token_type)
             .prefix
             .expect("Expected prefix rule");
-        prefix_rule(self);
 
         let precedence = precedence as u32;
+        let can_assign = precedence <= Precedence::Assignment as u32;
+        prefix_rule(self, can_assign);
+
         while precedence
             <= self
                 .get_rule(&self.tokens[self.current].token_type)
@@ -221,7 +228,11 @@ impl Parser {
                 .get_rule(&self.previous().token_type)
                 .infix
                 .expect("Expected infix rule");
-            infix_rule(self);
+            infix_rule(self, can_assign);
+        }
+
+        if can_assign && self.match_token(&[TokenType::Equal]) {
+            self.error_at("Invalid assignment target.").unwrap();
         }
     }
 

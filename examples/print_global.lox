@@ -1,6 +1,5 @@
-fun showVariable() {
-  print global;
-}
+var breakfast = "beignets";
+var beverage = "cafe au lait";
+breakfast = "beignets with " + beverage;
 
-var global = "after";
-showVariable();
+print breakfast;
