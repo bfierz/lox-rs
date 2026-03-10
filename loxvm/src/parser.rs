@@ -12,6 +12,7 @@ pub struct Parser {
     pub chunk: Chunk,
     current: usize,
     current_id: usize,
+    panic_occurred: bool,
 }
 
 #[derive(Debug)]
@@ -46,6 +47,19 @@ impl Parser {
             chunk: Chunk::new(strings),
             current: 0,
             current_id: 0,
+            panic_occurred: false,
+        }
+    }
+
+    pub fn declaration(&mut self) {
+        if self.match_token(&[TokenType::Var]) {
+            self.var_declaration();
+        } else {
+            self.statement();
+        }
+
+        if self.panic_occurred {
+            self.synchronize();
         }
     }
 
@@ -53,8 +67,22 @@ impl Parser {
         self.parse_precedence(Precedence::Assignment);
     }
 
-    pub fn declaration(&mut self) {
-        self.statement();
+    pub fn var_declaration(&mut self) {
+        let global = self.parse_variable("Expect variable name.");
+
+        if self.match_token(&[TokenType::Equal]) {
+            self.expression();
+        } else {
+            self.emit_opcode(OpCode::Nil);
+        }
+
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        )
+        .unwrap();
+
+        self.define_variable(global);
     }
 
     pub fn statement(&mut self) {
@@ -76,7 +104,32 @@ impl Parser {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after expression.")
             .unwrap();
-        self.emit(OpCode::Pop);
+        self.emit_opcode(OpCode::Pop);
+    }
+
+    fn synchronize(&mut self) {
+        // Reset panic mode so that we can report further errors.
+        self.panic_occurred = false;
+        while !self.is_at_end() {
+            if self.previous().token_type == TokenType::Semicolon {
+                return;
+            }
+
+            match self.tokens[self.current].token_type {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => return,
+                _ => {}
+            }
+
+            self.advance();
+        }
+    }
 
     fn string(&mut self) {
         let value = self.previous().lexeme.clone();
@@ -138,6 +191,17 @@ impl Parser {
         }
     }
 
+    fn variable(&mut self) {
+        let name = self.previous().lexeme.clone();
+        self.named_variable(&name);
+    }
+
+    fn named_variable(&mut self, name: &str) {
+        let arg = self.identifier_constant(name);
+        self.emit_opcode(OpCode::GetGlobal);
+        self.chunk.write(arg as u8, self.previous().line as u32);
+    }
+
     fn parse_precedence(&mut self, precedence: Precedence) {
         self.advance();
         let prefix_rule = self
@@ -159,6 +223,21 @@ impl Parser {
                 .expect("Expected infix rule");
             infix_rule(self);
         }
+    }
+
+    fn parse_variable(&mut self, error_message: &str) -> usize {
+        self.consume(TokenType::Identifier, error_message)
+            .expect("Expected variable name.");
+        self.identifier_constant(&self.previous().lexeme)
+    }
+
+    fn define_variable(&mut self, global: usize) {
+        self.emit_opcode(OpCode::DefineGlobal);
+        self.chunk.write(global as u8, self.previous().line as u32);
+    }
+
+    fn identifier_constant(&mut self, name: &str) -> usize {
+        self.make_constant(Value::String(name.to_string()))
     }
 
     fn get_rule(&self, token_type: &TokenType) -> ParseRule {
@@ -248,6 +327,11 @@ impl Parser {
                 infix: Some(Parser::binary),
                 precedence: Precedence::Comparison,
             },
+            TokenType::Identifier => ParseRule {
+                prefix: Some(Parser::variable),
+                infix: None,
+                precedence: Precedence::None,
+            },
             _ => ParseRule {
                 prefix: None,
                 infix: None,
@@ -261,13 +345,18 @@ impl Parser {
     }
 
     fn emit_constant(&mut self, value: Value) {
+        let constant_index = self.make_constant(value);
+        self.emit_opcode(OpCode::Constant);
+        self.chunk
+            .write(constant_index as u8, self.previous().line as u32);
+    }
+
+    fn make_constant(&mut self, value: Value) -> usize {
         let constant_index = self.chunk.add_constant(value);
         if constant_index > u8::MAX as usize {
             panic!("Too many constants in one chunk.");
         }
-        self.emit_opcode(OpCode::Constant);
-        self.chunk
-            .write(constant_index as u8, self.previous().line as u32);
+        constant_index
     }
 
     fn emit_opcode(&mut self, opcode: OpCode) {
@@ -294,14 +383,17 @@ impl Parser {
     }
 
     pub fn consume(&mut self, token: TokenType, message: &str) -> Result<Token, ParserError> {
-        self.consume_msg(token, message.to_string())
-    }
-
-    pub fn consume_msg(&mut self, token: TokenType, message: String) -> Result<Token, ParserError> {
         if self.check(&token) {
             self.advance();
             Ok(self.previous())
-        } else if self.is_at_end() {
+        } else {
+            self.error_at(message)
+        }
+    }
+
+    pub fn error_at(&mut self, message: &str) -> Result<Token, ParserError> {
+        self.panic_occurred = true;
+        if self.is_at_end() {
             let line = self.tokens[self.current].line;
             Err(ParserError {
                 message: format!("[line {}] Error at end: {}", line, message),

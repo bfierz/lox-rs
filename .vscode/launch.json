@@ -5,10 +5,8 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug",
-            "program": "${fileDirname}/../target/debug/loxrun",
-            "args": [
-                "${fileDirname}/../../verification/testsuite/test/super/super_at_top_level.lox"
-            ],
+            "program": "${fileDirname}/../target/debug/loxvm",
+            "args": [],
             "cwd": "${workspaceRoot}",
             "sourceLanguages": [
                 "rust"

@@ -10,17 +10,19 @@ pub enum OpCode {
     True = 2,
     False = 3,
     Pop = 4,
-    Equal = 5,
-    Greater = 6,
-    Less = 7,
-    Add = 8,
-    Subtract = 9,
-    Multiply = 10,
-    Divide = 11,
-    Not = 12,
-    Negate = 13,
-    Print = 14,
-    Return = 15,
+    GetGlobal = 5,
+    DefineGlobal = 6,
+    Equal = 7,
+    Greater = 8,
+    Less = 9,
+    Add = 10,
+    Subtract = 11,
+    Multiply = 12,
+    Divide = 13,
+    Not = 14,
+    Negate = 15,
+    Print = 16,
+    Return = 17,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +94,12 @@ impl Chunk {
             OpCode::True => self.disassemble_simple_instruction(output, "OP_TRUE", offset),
             OpCode::False => self.disassemble_simple_instruction(output, "OP_FALSE", offset),
             OpCode::Pop => self.disassemble_simple_instruction(output, "OP_POP", offset),
+            OpCode::GetGlobal => {
+                self.disassemble_simple_instruction(output, "OP_GET_GLOBAL", offset)
+            }
+            OpCode::DefineGlobal => {
+                self.disassemble_simple_instruction(output, "OP_DEFINE_GLOBAL", offset)
+            }
             OpCode::Equal => self.disassemble_simple_instruction(output, "OP_EQUAL", offset),
             OpCode::Greater => self.disassemble_simple_instruction(output, "OP_GREATER", offset),
             OpCode::Less => self.disassemble_simple_instruction(output, "OP_LESS", offset),

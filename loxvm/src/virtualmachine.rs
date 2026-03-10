@@ -12,6 +12,7 @@ pub struct VirtualMachine {
     chunk: Chunk,
     ip: usize,
     stack: Vec<Value>,
+    globals: Rc<RefCell<HashTable>>,
     strings: Rc<RefCell<HashTable>>,
 }
 
@@ -28,6 +29,7 @@ impl VirtualMachine {
             chunk: Chunk::new(Rc::clone(&strings)),
             ip: 0,
             stack: Vec::new(),
+            globals: Rc::new(RefCell::new(HashTable::new(64))),
             strings,
         }
     }
@@ -63,7 +65,25 @@ impl VirtualMachine {
                 x if x == OpCode::Nil as u8 => self.stack.push(Value::Nil),
                 x if x == OpCode::True as u8 => self.stack.push(Value::Bool(true)),
                 x if x == OpCode::False as u8 => self.stack.push(Value::Bool(false)),
-                x if x == OpCode::Pop as u8 => self.stack.pop(),
+                x if x == OpCode::Pop as u8 => {
+                    self.stack.pop();
+                }
+                x if x == OpCode::GetGlobal as u8 => {
+                    let name = self.read_constant().clone();
+                    let value = self
+                        .globals
+                        .borrow()
+                        .get(&name)
+                        .ok_or_else(|| format!("Undefined variable '{}'.", name))?
+                        .clone();
+                    self.stack.push(value);
+                }
+                x if x == OpCode::DefineGlobal as u8 => {
+                    let name = self.read_constant().clone();
+                    self.globals
+                        .borrow_mut()
+                        .insert(name, self.stack.pop().unwrap());
+                }
                 x if x == OpCode::Equal as u8 => self.equal_op(),
                 x if x == OpCode::Greater as u8 => self.binary_op(|a, b| Value::Bool(a > b)),
                 x if x == OpCode::Less as u8 => self.binary_op(|a, b| Value::Bool(a < b)),
